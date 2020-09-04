@@ -19,7 +19,7 @@ from wandb.keras import WandbCallback
 
 wandb.init(
   project="deep-tempering",
-  name="test-cifar10-lr-accuracy-plot-test-error",
+  name="test-cifar10-lr-plot-swap-and-no-swap",
   notes="",
   config={
     "model_name": "lenet5",
@@ -73,6 +73,7 @@ x_train, y_train, x_val, y_val, x_test, y_test = prepare_data(config.dataset_nam
 assert x_train.shape[0] == config.train_data_size
 
 model = dt.EnsembleModel(model_builders[config.model_name][config.dataset_name])
+model_noswap = dt.EnsembleModel(model_builders[config.model_name][config.dataset_name])
 
 hp1 = {'learning_rate': [0.01 for _ in range(config.n_replicas)],
        # 'dropout_rate': [0. for _ in range(config.n_replicas)]
@@ -119,6 +120,21 @@ for step in range(len(merged_history['acc_0'])):
     wandb.log({k: merged_history[k][step] for k in sorted(merged_history.keys())}, step=step)
 
 
+model_noswap.compile(optimizer=tf.keras.optimizers.SGD(),
+              loss='categorical_crossentropy',
+              metrics=['accuracy'],
+              n_replicas=config.n_replicas)
+
+history_noswap = model_noswap.fit(x_train,
+                    y_train,
+                    validation_data=(x_val, y_val),
+                    hyper_params=hp2,
+                    batch_size=config.batch_size,
+                    epochs=400,
+                    swap_step=None,
+                    burn_in=0,)
+
+
 
 
 
@@ -128,7 +144,7 @@ optimal_model = model.optimal_model()
 # inference only on the trained optimal model
 predicted = optimal_model.predict(x_test)
 
-train_plt, test_plt = plot_error(config.n_replicas, config.batch_size, config.train_data_size, hp2['learning_rate'], merged_history)
+train_plt, test_plt = plot_error(config.n_replicas, config.batch_size, config.train_data_size, hp2['learning_rate'], merged_history, history_noswap.history)
 
 wandb.log({"train error plot": wandb.Image(train_plt)})
 wandb.log({"test error plot": wandb.Image(test_plt)})
