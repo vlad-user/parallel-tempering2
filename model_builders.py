@@ -3,6 +3,7 @@ import numpy as np
 import deep_tempering as dt
 from keras.datasets import mnist
 from keras.utils import np_utils
+from utils import augment_images
 
 
 class AvgPoolWithWeights(tf.keras.layers.Layer):
@@ -67,8 +68,34 @@ class RBFEuclidean(tf.keras.layers.Layer):
         return x
 
 
+class AugmentImages(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super(AugmentImages, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(AugmentImages, self).build(input_shape)
+
+    def augment(self, x):
+        with tf.device('cpu:0'):
+            maybe_flipped = tf.image.random_flip_left_right(x)
+            padded = tf.pad(maybe_flipped, [[0, 0], [4, 4], [4, 4], [0, 0]])
+            cropped = tf.image.random_crop(padded, size=tf.shape(x))
+        return cropped
+
+    def call(self, x):
+        shape = tf.shape(x)
+        if tf.keras.backend.learning_phase():
+            with tf.device('cpu:0'):
+                x = tf.image.random_flip_left_right(x)
+                x = tf.pad(x, [[0, 0], [4, 4], [4, 4], [0, 0]])
+                x = tf.image.random_crop(x, size=shape)
+            return x
+        return x
+
+
 def lenet5_emnist_builder(hp):
     dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+
 
     inputs = tf.keras.layers.Input((32,32,1))
     res = tf.keras.layers.Conv2D(filters=6, kernel_size=(5, 5), activation='tanh',)(inputs)
@@ -82,6 +109,7 @@ def lenet5_emnist_builder(hp):
     res = tf.keras.layers.Dropout(dropout_rate)(res)
 
     res = tf.keras.layers.Flatten()(res)
+    res = tf.keras.layers.Dropout(dropout_rate)(res)
     res = tf.keras.layers.Dense(units=84, activation='tanh')(res)
     res = tf.keras.layers.Dropout(dropout_rate)(res)
 
@@ -90,8 +118,9 @@ def lenet5_emnist_builder(hp):
     return model
 
 
-def lenet5_cifar10_builder(hp):
-    dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+def lenet5_cifar10_builder(hp=None):
+    if hp:
+        dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
 
     inputs = tf.keras.layers.Input((32,32,3))
 
@@ -114,3 +143,32 @@ def lenet5_cifar10_builder(hp):
     res = tf.keras.layers.Dense(units=10, activation='softmax')(res) #ToDo: check whther softmax is present in research code or pass params to loss to work with logits
     model = tf.keras.models.Model(inputs, res)
     return model
+
+
+
+def lenet5_cifar10_with_augmentation_builder(hp):
+
+    dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+
+    inputs = tf.keras.layers.Input((32,32,3))
+    res = AugmentImages()(inputs)
+    res = tf.keras.layers.Conv2D(filters=6, kernel_size=(5, 5), strides=(1,1), activation='relu',)(res)
+    res = tf.keras.layers.MaxPooling2D(pool_size=(2, 2,), strides=(2, 2,))(res)
+    res = tf.keras.layers.Dropout(dropout_rate)(res)
+
+    res = tf.keras.layers.Conv2D(filters=16, kernel_size=(5, 5), activation='relu')(res)
+    res = tf.keras.layers.MaxPooling2D(pool_size=(2, 2,), strides=(2, 2,))(res)
+    res = tf.keras.layers.Dropout(dropout_rate)(res)
+
+
+    res = tf.keras.layers.Conv2D(filters=120, kernel_size=(5, 5), activation='relu')(res)
+    res = tf.keras.layers.Flatten()(res)
+    res = tf.keras.layers.Dropout(dropout_rate)(res)
+
+    res = tf.keras.layers.Dense(units=84, activation='relu')(res)
+    res = tf.keras.layers.Dropout(dropout_rate)(res)
+
+    res = tf.keras.layers.Dense(units=10, activation='softmax')(res) #ToDo: check whther softmax is present in research code or pass params to loss to work with logits
+    model = tf.keras.models.Model(inputs, res)
+    return model
+

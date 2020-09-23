@@ -2,17 +2,35 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from scipy.ndimage.filters import gaussian_filter1d
-import albumentations as A
+# import albumentations as A
+import tensorflow as tf
 
 
-def augment_image(img):
-    transform = A.Compose([A.HorizontalFlip(),
-                           A.PadIfNeeded(min_height=img.shape[0] + 8, min_width=img.shape[1] + 8),
-                           A.RandomCrop(height=img.shape[0], width=img.shape[1])
-                           ]
-                          )
-    tr_img = transform(image=img)['image']
-    return tr_img
+
+def augment_images(inputs, istrain):
+
+  def true_fn(x):
+    with tf.device('cpu:0'):
+      maybe_flipped = tf.image.random_flip_left_right(x)
+      padded = tf.pad(maybe_flipped, [[0, 0], [4, 4], [4, 4], [0, 0]])
+      cropped = tf.image.random_crop(padded, size=tf.shape(x))
+    return cropped
+
+  return tf.cond(istrain,
+                 true_fn=lambda: true_fn(inputs),
+                 false_fn=lambda: tf.identity(inputs))
+
+
+
+
+# def augment_image(img):
+#     transform = A.Compose([A.HorizontalFlip(),
+#                            A.PadIfNeeded(min_height=img.shape[0] + 8, min_width=img.shape[1] + 8),
+#                            A.RandomCrop(height=img.shape[0], width=img.shape[1])
+#                            ]
+#                           )
+#     tr_img = transform(image=img)['image']
+#     return tr_img
 
 
 def apply_filter(x, y, sigma=1):
