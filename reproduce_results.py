@@ -14,7 +14,6 @@ from sklearn.utils import shuffle as shuffle_dataset
 
 
 import wandb
-from wandb.keras import WandbCallback
 
 
 wandb.init(
@@ -92,12 +91,6 @@ model = dt.EnsembleModel(model_builders[config.model_builder])
 model_noswap = dt.EnsembleModel(model_builders[config.model_builder])
 
 
-class SGDLearningRateTracker(tf.keras.callbacks.Callback):
-    def on_epoch_end(self, epoch, logs={}):
-        lrs = [tf.keras.backend.eval(self.model._train_attrs[i]['optimizer'].lr * (1. / (1. + self.model._train_attrs[i]['optimizer'].decay *
-                                                                                         tf.cast(self.model._train_attrs[i]['optimizer'].iterations, dtype=tf.float32)))) for i in range(len(self.model._train_attrs))]
-        print(lrs)
-
 model.compile(optimizer=tf.keras.optimizers.SGD(),
               loss='categorical_crossentropy',
               metrics=['accuracy'],
@@ -123,10 +116,6 @@ history = model.fit(x_train,
                     #              explore_hyperparams=True,
                     #              burn_in=config.burn_in,
                     #              hyperparams_dist=hparams_dist_dict)]
-                    # callbacks=[WandbCallback(data_type="image",)]) #wandbcallback doesnt work with EnsembleModel, it lacks several attributes
-                    # callbacks=[SGDLearningRateTracker(),
-                    #            tf.keras.callbacks.TensorBoard(log_dir='./logs/test/', write_graph=False, update_freq='batch'),
-                    #            ]
                     )
 
 
