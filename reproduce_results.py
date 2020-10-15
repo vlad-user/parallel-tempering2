@@ -5,7 +5,7 @@ import numpy as np
 # import tensorflow_datasets as tfds
 import deep_tempering as dt
 from model_builders import lenet5_emnist_builder, lenet5_cifar10_builder, lenet5_cifar10_with_augmentation_builder
-from utils import plot_error
+from utils import plot_error, log_exchange_data_mh, log_exchange_data_pbt
 from keras.datasets import cifar10
 from keras.utils import np_utils
 from read_datasets import get_emnist_letters
@@ -19,21 +19,22 @@ from wandb.keras import WandbCallback
 
 wandb.init(
   project="deep-tempering",
-  name="test-cifar10-lr-log-exchange",
+  name="test-cifar10-lr-log-everything-swap-with-replicas-ids-smaller-swap-step-800-epochs",
   notes="",
   config={
     "model_name": "lenet5",
     "dataset_name": "cifar10",
     "model_builder": "lenet5_cifar10_builder",
-    "n_replicas": 2,
-    "swap_step": 800,
+    "hp_to_swap": 'learning_rate',
+    "n_replicas": 8,
+    "swap_step": 400,
     "burn_in": 25000,
     "batch_size": 128,
-    "epochs": 400,
-    "proba_coeff": 300000,
+    "epochs": 800,
+    "proba_coeff": 10,
     "train_data_size": 45000,
     "lr_range": [0.015, 0.01],
-    "dropout_range": [0.999, 0.999]  #ToDo: if value of hp==0 we get ZeroDivision error so if we need const dropout value != 0, we specify it
+    "dropout_range": [0.6, 0.6]  #ToDo: if value of hp==0 we get ZeroDivision error so if we need const dropout value != 0, we specify it
 }
 )
 
@@ -48,6 +49,11 @@ hp = {1: {'learning_rate': [0.1 for _ in range(config.n_replicas)],
        71: {'learning_rate': np.linspace(config.lr_range[0], config.lr_range[1], config.n_replicas),
         'dropout_rate': np.linspace(config.dropout_range[0], config.dropout_range[1], config.n_replicas),}
        }
+
+hparams_dist_dict = {
+  'learning_rate': lambda *x: np.random.normal(0.0, 0.002),
+  'dropout_rate': lambda *x: 0
+  }
 
 
 def prepare_data(ds):
@@ -108,7 +114,15 @@ history = model.fit(x_train,
                     epochs=config.epochs,
                     swap_step=config.swap_step,
                     burn_in=config.burn_in,
-                    # coeff=config.proba_coeff
+                    coeff=config.proba_coeff,
+                    hp_to_swap=config.hp_to_swap,
+                    # callbacks=[dt.callbacks.PBTExchangeCallback(
+                    #             exchange_data=(x_val,y_val),
+                    #              swap_step=config.swap_step,
+                    #              explore_weights=False,
+                    #              explore_hyperparams=True,
+                    #              burn_in=config.burn_in,
+                    #              hyperparams_dist=hparams_dist_dict)]
                     # callbacks=[WandbCallback(data_type="image",)]) #wandbcallback doesnt work with EnsembleModel, it lacks several attributes
                     # callbacks=[SGDLearningRateTracker(),
                     #            tf.keras.callbacks.TensorBoard(log_dir='./logs/test/', write_graph=False, update_freq='batch'),
@@ -121,43 +135,43 @@ history = model.fit(x_train,
 ex_history = history.exchange_history
 history = history.history
 
-print(ex_history)
+
 for step in range(len(history['acc_0'])):
     wandb.log({k: history[k][step] for k in sorted(history.keys())}, step=step)
-
-for i, step in enumerate(ex_history['step']):
-    wandb.log({'exchange probas': ex_history['proba'][i]}, step=step)
-    # wandb.log({'acceptance ratio': ex_history['accept_ratio'][i]}, step=step)
-
-wandb.log({'num of exchange attempts': len(ex_history['proba'])})
-wandb.log({'num of exchanges': ex_history['swaped'].count(1)})
-
 val_acc = np.array([history[f'val_acc_{i}'] for i in range(config.n_replicas)])
-wandb.log({'best val acc, # of replica, step': [np.round(np.max(val_acc), 3), np.argmax(np.max(val_acc, axis=1)), np.argmax(val_acc) % val_acc.shape[1]]})
+wandb.log({'best val acc, # of replica, step': [np.round(np.max(val_acc), 3), np.argmax(np.max(val_acc, axis=1)),
+                                                    np.argmax(val_acc) % val_acc.shape[1]]})
+log_exchange_data_mh(ex_history, config)
 
 
 
+# model_noswap.compile(optimizer=tf.keras.optimizers.SGD(),
+#               loss='categorical_crossentropy',
+#               metrics=['accuracy'],
+#               n_replicas=config.n_replicas)
+#
+#
+# history_noswap = model_noswap.fit(x_val,
+#                     y_val,
+#                     validation_data=(x_val, y_val),
+#                     hyper_params=hp,
+#                     batch_size=config.batch_size,
+#                     epochs=config.epochs,
+#                    callbacks=[dt.callbacks.PBTExchangeCallback(
+#                       exchange_data=(x_val,y_val),
+#                       swap_step=None,
+#                       explore_weights=False,
+#                       explore_hyperparams=True,
+#                       burn_in=0,
+#                       hyperparams_dist=hparams_dist_dict)]
+#                                   )
+#
+# history_noswap = history_noswap.history
+#
+# val_acc_noswap = np.array([history_noswap[f'val_acc_{i}'] for i in range(config.n_replicas)])
+# wandb.log({'best val acc no swap, # of replica, step': [np.round(np.max(val_acc_noswap), 3), np.argmax(np.max(val_acc_noswap, axis=1)), np.argmax(val_acc_noswap) % val_acc_noswap.shape[1]]})
 
 
-
-
-model_noswap.compile(optimizer=tf.keras.optimizers.SGD(),
-              loss='categorical_crossentropy',
-              metrics=['accuracy'],
-              n_replicas=config.n_replicas)
-
-
-history_noswap = model_noswap.fit(x_train,
-                    y_train,
-                    validation_data=(x_val, y_val),
-                    hyper_params=hp,
-                    batch_size=config.batch_size,
-                    epochs=config.epochs,
-                    swap_step=None,
-                    burn_in=0,
-                                    )
-
-history_noswap = history_noswap.history
 
 
 # access the optimal (not compiled) keras' model instance
@@ -167,11 +181,11 @@ optimal_model = model.optimal_model()
 predicted = optimal_model.predict(x_test)
 
 
-train_plt, test_plt = plot_error(config.n_replicas, config.batch_size, config.train_data_size, hp['learning_rate'], history,history_noswap)
-
-wandb.log({"train error plot": wandb.Image(train_plt)})
-wandb.log({"test error plot": wandb.Image(test_plt)})
-wandb.log({"train error plot(i)": train_plt})
-wandb.log({"test error plot(i)": test_plt})
+# train_plt, test_plt = plot_error(config.n_replicas, config.batch_size, config.train_data_size, hp[71]['learning_rate'], history,)
+#
+# wandb.log({"train error plot": wandb.Image(train_plt)})
+# wandb.log({"test error plot": wandb.Image(test_plt)})
+# wandb.log({"train error plot(i)": train_plt})
+# wandb.log({"test error plot(i)": test_plt})
 # #
 # #

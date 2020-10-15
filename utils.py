@@ -4,6 +4,7 @@ import os
 from scipy.ndimage.filters import gaussian_filter1d
 # import albumentations as A
 import tensorflow as tf
+import wandb
 
 
 
@@ -19,6 +20,81 @@ def augment_images(inputs, istrain):
   return tf.cond(istrain,
                  true_fn=lambda: true_fn(inputs),
                  false_fn=lambda: tf.identity(inputs))
+
+
+def log_exchange_data_mh(history, config):
+    for i, step in enumerate(history['step']):
+        wandb.log({'exchange probas': history['proba'][i]}, step=step)
+        wandb.log({'acceptance ratio': history['accept_ratio'][i]}, step=step)
+        wandb.log({'delta': history['delta'][i]}, step=step)
+        wandb.log({'exchange_pair': history['exchange_pair'][i]}, step=step)
+        wandb.log({'swaped': history['swaped'][i]}, step=step)
+
+        for j in range(config.n_replicas):
+            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i]}, step=step)
+
+
+    wandb.log({'num of exchange attempts': len(history['proba'])})
+    wandb.log({'num of exchanges': history['swaped'].count(1)})
+
+
+def log_exchange_data_pbt(history, config):
+    for i, step in enumerate(history['step']):
+        wandb.log({'optimal replica': history['optimal_replica'][i]}, step=step)
+    val_acc = np.array([history[f'val_acc_{i}'] for i in range(config.n_replicas)])
+    wandb.log({'best val acc, # of replica, step': [np.round(np.max(val_acc), 3), np.argmax(np.max(val_acc, axis=1)),
+                                                    np.argmax(val_acc) % val_acc.shape[1]]})
+
+
+def assign_up_down_labels(history, hp_range, n_replicas, hp_to_swap):
+    min_p, max_p = hp_range
+    labels = {}
+    for j in range(n_replicas):
+        labels[j] = []
+        curr = None
+        for p in history[j][hp_to_swap]:
+            if not curr:
+                if p == max_p:
+                    curr = 'down'
+                elif p == min_p:
+                    curr = 'up'
+            else:
+                if p == max_p and labels[j][-1] == 'up':
+                    curr = 'down'
+                elif p == min_p and labels[j][-1] == 'down':
+                    curr = 'up'
+            labels[j].append(curr)
+    return labels
+
+
+def calc_up_down_ratio(history, labels, hp_range, n_replicas, hp_to_swap):
+    min_p, max_p = hp_range
+    hp = np.array([history[j][hp_to_swap] for j in range(n_replicas)])
+    ups_and_downs = {t: [] for t in np.linspace(min_p, max_p, n_replicas)}
+    ups_and_downs[min_p].append('up')
+    ups_and_downs[max_p].append('down')
+    for i, exchange_pair in enumerate(history['exchange_pair']):
+        if history['swap'][i]:
+            ups_and_downs[hp[exchange_pair[0], i]].append(labels[exchange_pair[0]][i])
+            ups_and_downs[hp[exchange_pair[1], i]].append(labels[exchange_pair[1]][i])
+    ratios = {t: v.count('up') / (v.count('down') + v.count('up')) for t, v in ups_and_downs.items()}
+    return ratios
+
+
+def plot_up_down_ratios(ratios):
+    plt.plot(sorted(ratios.keys()), [ratios[k] for k in sorted(ratios.keys())], '-o')
+    plt.xlabel('T value')
+    plt.ylabel('f(T)')
+    plt.show()
+
+
+
+
+
+
+
+
+
 
 
 
@@ -61,14 +137,14 @@ def plot_error(n_replicas, batch_size, train_data_size, noise_list, swap_history
         min_err_swap = np.min(np.array(swap_errors))
         swap_minrid = np.argmin(np.min(np.array(swap_errors), axis=1))
 
-        if noswap_history:
+        if noswap_errors:
             min_err_noswap = np.min(np.array(noswap_errors))
             noswap_minrid = np.argmin(np.min(np.array(noswap_errors), axis=1))
 
         yswap = swap_errors[swap_minrid]
         xswap = np.arange(0, len(yswap))
 
-        if noswap_history:
+        if noswap_errors:
             ynoswap = noswap_errors[noswap_minrid]
             xnoswap = np.arange(0, len(ynoswap))
 
@@ -76,11 +152,11 @@ def plot_error(n_replicas, batch_size, train_data_size, noise_list, swap_history
 
 
         yswap_orig = yswap.copy()
-        if noswap_history:
+        if noswap_errors:
             ynoswap_orig = ynoswap.copy()
 
         xswap, yswap = apply_filter(xswap, yswap, sigma=sigma)
-        if noswap_history:
+        if noswap_errors:
             xnoswap, ynoswap = apply_filter(xnoswap, ynoswap, sigma=sigma)
 
         label = '$\gamma\in {0} {1:.3f}, ..., {2:.3f} {3}^{4} $'.format(
@@ -88,7 +164,7 @@ def plot_error(n_replicas, batch_size, train_data_size, noise_list, swap_history
         ax.plot(xswap, yswap, label=label, color=colors[0], linewidth=LINEWIDTH)
         ax.plot(xswap, yswap_orig, alpha=alpha, linewidth=TLINEWIDTH, color=colors[0])
 
-        if noswap_history:
+        if noswap_errors:
             ax.plot(xnoswap, ynoswap, label='$\gamma^*={0:.3f}$)'.format(noise_list[noswap_minrid]),
                 color=colors[1], linewidth=LINEWIDTH)
             ax.plot(xnoswap, ynoswap_orig, alpha=alpha, linewidth=TLINEWIDTH, color=colors[1])
