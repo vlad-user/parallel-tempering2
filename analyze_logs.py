@@ -24,18 +24,21 @@ def load_logs(run_path, metrics_to_load):
         json.dump(logs, fp)
     return logs
 
-to_load = ['exchange_pair', 'exchange probas']
-for i in range(8):
-    to_load.append(f'replica_{i}_learning_rate')
+# to_load = ['exchange_pair', 'exchange probas']
+# for i in range(8):
+#     to_load.append(f'replica_{i}_learning_rate')
 
-logs = load_logs("dzvinn/deep-tempering/347ywhh8", to_load)
-history = {int(k.split('_')[1]): {'learning_rate': logs[k]} for k in logs if k.startswith('replica')}
-history['exchange_pair'] = logs['exchange_pair']
-history['swap'] = [round(p, 0) for p in logs['exchange probas']]
-labels = assign_up_down_labels(history, [0.01, 0.015], 8, 'learning_rate')
-print(labels)
+to_load = ['exchange_loss_1', 'exchange_loss_2']
 
-ratios = calc_up_down_ratio(history, labels, [0.01, 0.015], 8, 'learning_rate')
-for k in sorted(ratios.keys()):
-    print(f'{k} : {ratios[k]}')
-plot_up_down_ratios(ratios)
+logs = load_logs("dzvinn/deep-tempering/3jzdp7qg", to_load)
+print(len(logs['exchange_loss_1']))
+# history = {int(k.split('_')[1]): {'learning_rate': logs[k]} for k in logs if k.startswith('replica')}
+# history['exchange_pair'] = logs['exchange_pair']
+# history['swap'] = [round(p, 0) for p in logs['exchange probas']]
+# labels = assign_up_down_labels(history, [0.01, 0.015], 8, 'learning_rate')
+# print(labels)
+#
+# ratios = calc_up_down_ratio(history, labels, [0.01, 0.015], 8, 'learning_rate')
+# for k in sorted(ratios.keys()):
+#     print(f'{k} : {ratios[k]}')
+# plot_up_down_ratios(ratios)

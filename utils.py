@@ -5,7 +5,80 @@ from scipy.ndimage.filters import gaussian_filter1d
 # import albumentations as A
 import tensorflow as tf
 import wandb
+from deep_tempering.callbacks import BaseExchangeCallback
 
+
+class LogExchangeLossesCallback(BaseExchangeCallback):
+    def __init__(self, exchange_data, swap_step, burn_in=None, **kwargs):
+        super(LogExchangeLossesCallback, self).__init__(exchange_data, swap_step, burn_in)
+        self.hp_to_swap = kwargs.get('hp_to_swap', None)
+
+    def exchange(self, **kwargs):
+        losses = self.evaluate_exchange_losses()
+        super().log_exchange_metrics(losses)
+
+
+class MetropolisExchangeOneHPCallback(BaseExchangeCallback):
+  """Exchanges of hyperparameters based on Metropolis acceptance criteria."""
+  def __init__(self, exchange_data, hp_to_swap, swap_step=1, burn_in=1, coeff=1.):
+    super(MetropolisExchangeOneHPCallback, self).__init__(exchange_data, swap_step, burn_in)
+    self.coeff = coeff
+    self.hpname = hp_to_swap
+
+  def exchange(self, **kwargs):
+    """Exchanges hyperparameters between adjacent replicas.
+
+    This function is called once on the beginning of training to
+    log initial values of hyperparameters and then it is called
+    every `swap_step` steps.
+    """
+    # pick random hyperparameter to exchange
+    hp = self.ordered_hyperparams
+    hpname = self.hpname
+    # pick random replica pair to exchange
+    n_replicas = self.model.n_replicas
+    exchange_pair = kwargs.get('exchange_pair', np.random.randint(1, n_replicas))
+
+    losses = self.evaluate_exchange_losses()
+
+    hyperparams = [h[1] for h in hp[hpname]]
+    replicas_ids = [h[0] for h in hp[hpname]]
+
+    i = exchange_pair
+    j = exchange_pair - 1
+
+    # compute betas
+    if 'dropout' in hpname:
+      beta_i = (1. - hyperparams[i]) / hyperparams[i]
+      beta_j = (1. - hyperparams[j]) / hyperparams[j]
+    else:
+      # learning rate
+      beta_i = 1. / hyperparams[i]
+      beta_j = 1. / hyperparams[j]
+
+    # beta_i - beta_j is expected to be negative
+    delta = self.coeff * (losses[i] - losses[j]) * (beta_i - beta_j)
+    proba = min(np.exp(delta), 1.)
+
+    if np.random.uniform() < proba:
+      swaped = 1
+      self.model.hpspace.swap_between(replicas_ids[i], replicas_ids[j], hpname)
+    else:
+      swaped = 0
+
+    if getattr(self, 'exchange_logs', None):
+      accpt_ratio = (self.exchange_logs['swaped'].count(1) + swaped) / \
+                    (len(self.exchange_logs['proba']) + 1)
+    else:
+      accpt_ratio = swaped
+
+    super().log_exchange_metrics(losses,
+                                 proba=proba,
+                                 hpname=hpname,
+                                 swaped=swaped,
+                                 accept_ratio=accpt_ratio,
+                                 delta=delta,
+                                 exchange_pair=[replicas_ids[i], replicas_ids[j]])
 
 
 def augment_images(inputs, istrain):
@@ -22,20 +95,21 @@ def augment_images(inputs, istrain):
                  false_fn=lambda: tf.identity(inputs))
 
 
-def log_exchange_data_mh(history, config):
+def log_exchange_data_mh(history, config, swap):
     for i, step in enumerate(history['step']):
-        wandb.log({'exchange probas': history['proba'][i]}, step=step)
-        wandb.log({'acceptance ratio': history['accept_ratio'][i]}, step=step)
-        wandb.log({'delta': history['delta'][i]}, step=step)
-        wandb.log({'exchange_pair': history['exchange_pair'][i]}, step=step)
-        wandb.log({'swaped': history['swaped'][i]}, step=step)
-
+        if swap:
+            wandb.log({'exchange probas': history['proba'][i], 'batch': step} )
+            wandb.log({'acceptance ratio': history['accept_ratio'][i], 'batch': step} )
+            wandb.log({'delta': history['delta'][i], 'batch': step} )
+            wandb.log({'exchange_pair': history['exchange_pair'][i], 'batch': step} )
+            wandb.log({'swaped': history['swaped'][i], 'batch': step} )
         for j in range(config.n_replicas):
-            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i]}, step=step)
+            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i], 'batch': step} )
+            wandb.log({f'exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
 
-
-    wandb.log({'num of exchange attempts': len(history['proba'])})
-    wandb.log({'num of exchanges': history['swaped'].count(1)})
+    if swap:
+        wandb.log({'num of exchange attempts': len(history['proba'])})
+        wandb.log({'num of exchanges': history['swaped'].count(1)})
 
 
 def log_exchange_data_pbt(history, config):

@@ -93,9 +93,9 @@ class AugmentImages(tf.keras.layers.Layer):
         return x
 
 class CustomDropout(tf.keras.layers.Layer):
-    def __init__(self, rate, **kwargs):
+    def __init__(self, drop_prob, **kwargs):
         super(CustomDropout, self).__init__(**kwargs)
-        self.rate = rate
+        self.rate = 1 - drop_prob
 
     def build(self, input_shape):
         super(CustomDropout, self).build(input_shape)
