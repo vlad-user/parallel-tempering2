@@ -32,7 +32,8 @@ wandb.init(
     "train_data_size": 45000,
     "lr_range": [0.01, 0.015],  # NOW DROPOUT PROBABILITY
     "dropout_range": [0.4, 0.4],  #ToDo: if value of hp==0 we get ZeroDivision error so if we need const dropout value != 0, we specify it
-    "random_seed": 42
+    "random_seed": 42,
+    "do_swap": True,
 }
 )
 
@@ -140,7 +141,7 @@ for step in range(len(history['acc_0'])):
 val_acc = np.array([history[f'val_acc_{i}'] for i in range(config.n_replicas)])
 wandb.log({'best val acc, # of replica, step': [np.round(np.max(val_acc), 3), np.argmax(np.max(val_acc, axis=1)),
                                                     np.argmax(val_acc) % val_acc.shape[1]]})
-log_exchange_data_mh(ex_history, config, True)
+log_exchange_data_mh(ex_history, config, config.do_swap)
 
 
 
