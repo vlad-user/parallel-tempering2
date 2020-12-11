@@ -48,10 +48,22 @@ def log_exchange_data_mh_temp_adj(history, config, swap):
             wandb.log({'delta': history['delta'][i], 'batch': step} )
             wandb.log({'exchange_pair': history['exchange_pair'][i], 'batch': step} )
             wandb.log({'swaped': history['swaped'][i], 'batch': step} )
-            if i % config.temp_adj_step == 0 and step != 0:  #log history of proposed hp values
+            # if i % config.temp_adj_step == 0 and step != 0:  #log history of proposed hp values
+            #     for k in history:
+            #         if str(k).startswith('hp_v_'):
+            #             wandb.log({f'adj_value_for_{k}': history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+            if i % config.temp_adj_step == 0:  # log history of proposed hp values
                 for k in history:
-                    if str(k).startswith('hp_v_'):
-                        wandb.log({f'adj_value_for_{k}': history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+                    if step != 0:
+                        if str(k).startswith('difference_beta_indx_'):
+                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+
+                        elif str(k).startswith('difference_clipped_beta_indx_'):
+                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+
+                    if str(k).startswith('hp_'):
+                        wandb.log({k: history[k][(i // config.temp_adj_step)], 'batch': step})
+
         for j in range(config.n_replicas):
             wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i], 'batch': step} )
             wandb.log({f'exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )

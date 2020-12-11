@@ -132,7 +132,7 @@ def lenet5_emnist_builder(hp):
 
 
 def lenet5_cifar10_builder(hp):
-   
+
     dropout_rate = hp.get_hparam('dropout_rate', default_value=0.)
 
     inputs = tf.keras.layers.Input((32,32,3))

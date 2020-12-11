@@ -220,8 +220,21 @@ class MetropolisExchangeTempAdjustmentCallback(BaseExchangeCallback):
         self.hpname = hp_to_swap
         self.temp_adj_step = temp_adj_step
 
+    def calc_adj_value(self, beta_old, beta_new, beta_pr, beta_next):
+        diff = beta_old - beta_new
+        if diff < 0: #beta_old < beta_new, beta_new is between beta_old and beta_pr
+            adj_value = min(abs(diff), abs(beta_pr - beta_old) / 2) #adj value can't be bigger than half dist btw beta_prev and beta_old
+            beta_adj = beta_old + adj_value
+        elif diff > 0:
+            adj_value = min(abs(diff), abs(beta_next - beta_old) / 2)
+
+            beta_adj = beta_old - adj_value
+        else:
+            beta_adj = beta_new
+        return beta_adj, diff, beta_old - beta_adj
+
+
     def adjust_temperatures(self, temp_adj_count):
-        print("adjusting")
         n_replicas = self.model.n_replicas
         hp_name = self.hpname
         hp = self.ordered_hyperparams
@@ -229,7 +242,7 @@ class MetropolisExchangeTempAdjustmentCallback(BaseExchangeCallback):
         losses_history = [self.exchange_logs[f'loss_{i}'][-self.temp_adj_step:] for i in range(n_replicas)] #TEMP, how many of the last losses to take?
         hp_values = [h[1] for h in hp[hp_name]]
         replicas_ids = [h[0] for h in hp[hp_name]]
-        losses_history_by_temp = {hp_value: [] for hp_value in hp_values}
+        losses_history_by_temp = {hp_value: [] for hp_value in hp_values}  #review case: if we add new hp value because we adj them wi
 
         for r in range(n_replicas):
             for step, hp_value in enumerate(self.exchange_logs[r][hp_name][-self.temp_adj_step:]):
@@ -247,7 +260,9 @@ class MetropolisExchangeTempAdjustmentCallback(BaseExchangeCallback):
         else:
             start_indx = 2
 
-        adj_hp_values = {}
+        # adj_hp_values = {}
+        diff_btw_betas = {}
+        diff_btw_betas_clipped = {}
         for i in range(start_indx, n_replicas - 1, 2): #don't change the top and bottom temp
             beta_pr, beta_next = betas[i-1], betas[i+1]
             loss_pr, loss_i, loss_next = losses_history_by_temp[hp_values[i-1]], losses_history_by_temp[hp_values[i]], losses_history_by_temp[hp_values[i+1]]
@@ -257,16 +272,29 @@ class MetropolisExchangeTempAdjustmentCallback(BaseExchangeCallback):
 
             beta_new = n / d
 
-            # beta_adj = ((betas[i] + beta_new) / 2.) # new value should be between beta_pr and beta_next
-            hp_value_new = (hp_values[i] + 1. / beta_new) / 2.
-            adj_hp_values[np.round(hp_values[i], 5)] = hp_value_new
-            # self.model.hpspace.set_hyperparams(hp_value_new, hp_name, replicas_ids[i])
+            beta_adj = ((betas[i] + beta_new) / 2.) # new value should be between beta_pr and beta_next
 
-        for hp_v in hp_values:
-            if not np.round(hp_v, 5) in adj_hp_values:
-                adj_hp_values[np.round(hp_v, 5)] = hp_v
+            beta_adj, diff, diff_clipped = self.calc_adj_value(betas[i], beta_adj, beta_pr, beta_next)
+            hp_value_new = 1. / beta_adj
 
-        return adj_hp_values
+
+            # adj_hp_values[np.round(hp_values[i], 5)] = hp_value_new
+            diff_btw_betas[i] = diff
+            diff_btw_betas_clipped[i] = diff_clipped
+
+            self.model.hpspace.set_hyperparams(hp_value_new, hp_name, replicas_ids[i])
+
+        # for hp_v in hp_values:
+        #     if not np.round(hp_v, 5) in adj_hp_values:
+        #         adj_hp_values[np.round(hp_v, 5)] = hp_v
+        for i in range(n_replicas):
+            if i not in diff_btw_betas:
+                diff_btw_betas[i] = 0
+            if i not in diff_btw_betas_clipped:
+                diff_btw_betas_clipped[i] = 0
+
+        return diff_btw_betas, diff_btw_betas_clipped
+
 
 
 
@@ -337,10 +365,22 @@ class MetropolisExchangeTempAdjustmentCallback(BaseExchangeCallback):
                                      delta=delta,
                                      exchange_pair=[replicas_ids[i], replicas_ids[j]])
 
+        if self.model.global_step == 0:
+            for i, hp in enumerate(hyperparams):
+                self.exchange_logs[f'hp_value_{i}'] = [hp]
+
         if (len(self.exchange_logs['swaped']) - 1) % self.temp_adj_step == 0 and len(self.exchange_logs['swaped']) > 1: #adjust after swap??? adjust only after a certain number of swaps or count no swaps as well?
-            adj_hp_values = self.adjust_temperatures((len(self.exchange_logs['swaped']) - 1) // self.temp_adj_step) #subtract 1 bc of the call to the exchange at the beginning of the training
-            for k, v in adj_hp_values.items():
-                if not f'hp_v_{k}' in self.exchange_logs:
-                    self.exchange_logs[f'hp_v_{k}'] = [v]
+            for i, hp in enumerate(self.ordered_hyperparams[hpname]): #some of them were changed in adj_temperatures
+                self.exchange_logs[f'hp_value_{i}'].append(hp[1])
+            diff_btw_betas, diff_btw_betas_clipped = self.adjust_temperatures((len(self.exchange_logs['swaped']) - 1) // self.temp_adj_step) #subtract 1 bc of the call to the exchange at the beginning of the training
+            for k, v in diff_btw_betas.items():
+                if not f'difference_beta_indx_{k}' in self.exchange_logs:
+                    self.exchange_logs[f'difference_beta_indx_{k}'] = [v]
                 else:
-                    self.exchange_logs[f'hp_v_{k}'].append(v)
+                    self.exchange_logs[f'difference_beta_indx_{k}'].append(v)
+
+            for k, v in diff_btw_betas_clipped.items():
+                if not f'difference_clipped_beta_indx_{k}' in self.exchange_logs:
+                    self.exchange_logs[f'difference_clipped_beta_indx_{k}'] = [v]
+                else:
+                    self.exchange_logs[f'difference_clipped_beta_indx_{k}'].append(v)

@@ -17,8 +17,8 @@ import wandb
 
 wandb.init(
   project="deep-tempering",
-  name="test-temp-adj-log-proposals-for-adj",
-  notes="",
+  name="test-temp-swap-adj-log-differences-btw-betas-changed-clipping",
+  notes="adjust temp by max half dist btw prev(or next) beta and old value for beta being adj",
   config={
     "model_name": "lenet5",
     "dataset_name": "cifar10",
