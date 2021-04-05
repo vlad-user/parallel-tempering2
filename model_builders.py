@@ -105,6 +105,19 @@ class CustomDropout(tf.keras.layers.Layer):
         return x
 
 
+class MyInit(tf.keras.initializers.Initializer):
+
+    def __init__(self, mean, stddev):
+      self.mean = mean
+      self.stddev = stddev
+
+    def __call__(self, shape, dtype=None):
+      return tf.random.normal(shape, mean=self.mean, stddev=self.stddev, dtype=dtype)
+
+    def get_config(self):  # To support serialization
+        return {'mean': self.mean, 'stddev': self.stddev}
+
+
 
 def lenet5_emnist_builder(hp):
     dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
@@ -156,6 +169,37 @@ def lenet5_cifar10_builder(hp):
 
     res = CustomDropout(dropout_rate)(res)
     res = tf.keras.layers.Dense(units=10, activation='softmax')(res) #ToDo: check whther softmax is present in research code or pass params to loss to work with logits
+    model = tf.keras.models.Model(inputs, res)
+    return model
+
+def lenet5_cifar10_same_init_builder(hp):
+    s = np.random.get_state()[1][0]
+    print(s)
+    initializer = tf.keras.initializers.glorot_uniform(s)
+
+    dropout_rate = hp.get_hparam('dropout_rate', default_value=0.)
+
+    inputs = tf.keras.layers.Input((32,32,3))
+
+    res = tf.keras.layers.Conv2D(filters=6, kernel_size=(5, 5), strides=(1,1), activation='relu', kernel_initializer=initializer)(inputs)
+    res = tf.keras.layers.MaxPooling2D(pool_size=(2, 2,), strides=(2, 2,))(res)
+    # res = tf.keras.layers.Lambda(lambda x: tf.nn.dropout(x[0], x[1]))()
+    res = CustomDropout(dropout_rate)(res)
+
+
+    res = tf.keras.layers.Conv2D(filters=16, kernel_size=(5, 5), activation='relu', kernel_initializer=initializer)(res)
+    res = tf.keras.layers.MaxPooling2D(pool_size=(2, 2,), strides=(2, 2,))(res)
+
+    res = CustomDropout(dropout_rate)(res)
+
+    res = tf.keras.layers.Conv2D(filters=120, kernel_size=(5, 5), activation='relu', kernel_initializer=initializer)(res)
+    res = tf.keras.layers.Flatten()(res)
+
+    res = CustomDropout(dropout_rate)(res)
+    res = tf.keras.layers.Dense(units=84, activation='relu', kernel_initializer=initializer)(res)
+
+    res = CustomDropout(dropout_rate)(res)
+    res = tf.keras.layers.Dense(units=10, activation='softmax', kernel_initializer=initializer)(res) #ToDo: check whther softmax is present in research code or pass params to loss to work with logits
     model = tf.keras.models.Model(inputs, res)
     return model
 

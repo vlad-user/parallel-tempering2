@@ -23,10 +23,52 @@ def augment_images(inputs, istrain):
                  false_fn=lambda: tf.identity(inputs))
 
 
+def numpy_ewma_vectorized(data, window):
+    alpha = 2 / (window + 1.0)
+    alpha_rev = 1 - alpha
+
+    scale = 1 / alpha_rev
+    n = data.shape[0]
+
+    r = np.arange(n)
+    scale_arr = scale ** r
+    offset = data[0] * alpha_rev ** (r + 1)
+    pw0 = alpha * alpha_rev ** (n - 1)
+
+    mult = data * pw0 * scale_arr
+    cumsums = mult.cumsum()
+    out = offset + cumsums * scale_arr[::-1]
+    return out
+
+def log_additional_losses(history, config, swap):
+    for i, step in enumerate(history['step']):
+        for j in range(config.n_replicas):
+            wandb.log({f'batch_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
+
 def log_exchange_data_mh(history, config, swap):
     for i, step in enumerate(history['step']):
         if swap:
             wandb.log({'exchange probas': history['proba'][i], 'batch': step} )
+            wandb.log({'acceptance ratio': history['accept_ratio'][i], 'batch': step} )
+            wandb.log({'delta': history['delta'][i], 'batch': step} )
+            wandb.log({'exchange_pair': history['exchange_pair'][i], 'batch': step} )
+            wandb.log({'swaped': history['swaped'][i], 'batch': step} )
+        for j in range(config.n_replicas):
+            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i], 'batch': step} )
+            wandb.log({f'exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
+
+    if swap:
+        wandb.log({'num of exchange attempts': len(history['proba'])})
+        wandb.log({'num of exchanges': history['swaped'].count(1)})
+
+
+def log_exchange_data_mh_log_all_probas(history, config, swap):
+    for i, step in enumerate(history['step']):
+        if swap:
+            wandb.log({'exchange probas': history['proba'][i], 'batch': step} )
+            # wandb.log({'exchange probas for all t': history['all_probas'][i], 'batch': step} )
+            wandb.log({'exchange deltas for all t': history['all_deltas'][i], 'batch': step} )
+
             wandb.log({'acceptance ratio': history['accept_ratio'][i], 'batch': step} )
             wandb.log({'delta': history['delta'][i], 'batch': step} )
             wandb.log({'exchange_pair': history['exchange_pair'][i], 'batch': step} )
@@ -61,6 +103,9 @@ def log_exchange_data_mh_temp_adj(history, config, swap):
                         elif str(k).startswith('difference_clipped_beta_indx_'):
                             wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
 
+                        elif str(k).startswith('beta_'):
+                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+
                     if str(k).startswith('hp_'):
                         wandb.log({k: history[k][(i // config.temp_adj_step)], 'batch': step})
 
@@ -71,6 +116,43 @@ def log_exchange_data_mh_temp_adj(history, config, swap):
     if swap:
         wandb.log({'num of exchange attempts': len(history['proba'])})
         wandb.log({'num of exchanges': history['swaped'].count(1)})
+
+def log_exchange_data_mh_temp_adj_log_all_probas(history, config, swap):
+    for i, step in enumerate(history['step']):
+        if swap:
+            wandb.log({'exchange probas': history['proba'][i], 'batch': step} )
+            wandb.log({'acceptance ratio': history['accept_ratio'][i], 'batch': step} )
+            wandb.log({'delta': history['delta'][i], 'batch': step} )
+            wandb.log({'exchange deltas for all t': history['all_deltas'][i], 'batch': step} )
+            wandb.log({'exchange_pair': history['exchange_pair'][i], 'batch': step} )
+            wandb.log({'swaped': history['swaped'][i], 'batch': step} )
+            # if i % config.temp_adj_step == 0 and step != 0:  #log history of proposed hp values
+            #     for k in history:
+            #         if str(k).startswith('hp_v_'):
+            #             wandb.log({f'adj_value_for_{k}': history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+            if i % config.temp_adj_step == 0:  # log history of proposed hp values
+                for k in history:
+                    if step != 0:
+                        if str(k).startswith('difference_beta_indx_'):
+                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+
+                        elif str(k).startswith('difference_clipped_beta_indx_'):
+                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+
+                        elif str(k).startswith('beta_'):
+                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+
+                    if str(k).startswith('hp_'):
+                        wandb.log({k: history[k][(i // config.temp_adj_step)], 'batch': step})
+
+        for j in range(config.n_replicas):
+            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i], 'batch': step} )
+            wandb.log({f'exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
+
+    if swap:
+        wandb.log({'num of exchange attempts': len(history['proba'])})
+        wandb.log({'num of exchanges': history['swaped'].count(1)})
+
 
 
 def log_exchange_data_pbt(history, config):
@@ -249,4 +331,95 @@ def plot_error(n_replicas, batch_size, train_data_size, noise_list, swap_history
 
     train_plt = plot(n_replicas, batch_size, train_data_size, noise_list, train_swap_errors, train_noswap_errors)
     test_plt = plot(n_replicas, batch_size, train_data_size, noise_list, test_swap_errors, test_noswap_errors)
+    return train_plt, test_plt
+
+
+def plot_error_2(n_replicas, histories, labels, noise_list):
+
+    test_errors = [[[(1 - val) * 100 for val in h[f'val_acc_{i}']] for i in range(n_replicas)] for h in histories]
+    train_errors = [[[(1 - val) * 100 for val in h[f'acc_{i}']] for i in range(n_replicas)] for h in histories]
+
+
+    def plot(n_replicas, errors, labels, noise_list):
+
+        LINEWIDTH = 5
+        TLINEWIDTH = 3
+        alpha = 0.35
+        sigma = 4
+        LEGEND_SIZE = 21
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        for i, e in enumerate(errors):
+
+            min_err = np.min(np.array(e))
+            minrid = np.argmin(np.min(np.array(e), axis=1))
+
+            y = e[minrid]
+            x = np.arange(0, len(y))
+
+
+            fig, ax = plt.subplots(figsize=(12, 8))
+
+
+            y_orig = y.copy()
+
+            x, y = apply_filter(x, y, sigma=sigma)
+
+
+
+            if labels[i] == 'no swap':
+                label = '$\gamma^*={0:.3f}$)'.format(noise_list[minrid])
+            else:
+                label = '$\gamma\in {0} {1:.3f}, ..., {2:.3f} {3}^{4} $'.format(
+                    '\{', min(noise_list), max(noise_list), '\}', n_replicas)
+
+            ax.plot(x, y, label=label, color=colors[i], linewidth=LINEWIDTH)
+            ax.plot(x, y_orig, alpha=alpha, linewidth=TLINEWIDTH, color=colors[i])
+
+
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        FONTSIZE = 25
+
+
+        # top_line_y = [31, 31]
+        # ax.plot([0, 404*EPOCH_MULT], top_line_y, linestyle='--', color='black', linewidth=2.5, dashes=(8, 12))
+        # top_line_y = [29, 29]
+        # ax.plot([0, 404*EPOCH_MULT], top_line_y, linestyle='--', color='black', linewidth=2.5, dashes=(8, 12))
+        # top_line_y = [27, 27]
+        # ax.plot([0, 404*EPOCH_MULT], top_line_y, linestyle='--', color='black', linewidth=2.5, dashes=(8, 12))
+
+        # plt.yticks([27, 29, 31])
+        # xticks = [20000, 40000, 60000, 80000, 100000, 120000, 140000]
+        # xlabels = ['20K', '40K', '60K', '80K', '100K', '120K', '140K']
+
+        # plt.ylim((26.95, 31.05))
+        # plt.xlim((0, 404*EPOCH_MULT))
+
+
+        plt.yticks(fontsize=23)
+        # plt.xticks(xticks, xlabels, fontsize=23)
+        plt.xlabel('Epochs', fontsize=FONTSIZE)
+        plt.ylabel('Error (%)', fontsize=FONTSIZE)
+        plt.rcParams["legend.loc"] = 'lower left'
+        leg = plt.legend(fancybox=True, prop={'size': 19})
+        leg.get_frame().set_edgecolor('black')
+        leg.get_frame().set_linewidth(3)
+        ax.set_rasterized(True)
+
+        # dirname = os.path.join(os.getcwd(), 'plots')
+        #
+        # if not os.path.exists(dirname):
+        #   os.makedirs(dirname)
+        #
+        # path = os.path.join(dirname, 'cifar-learning_rate.eps')
+        #
+        # plt.savefig(path, bbox_inches='tight')
+
+        return plt
+
+    train_plt = plot(n_replicas, train_errors, labels, noise_list)
+    test_plt = plot(n_replicas, test_errors, labels, noise_list)
+
     return train_plt, test_plt
