@@ -126,18 +126,18 @@ def lenet5_emnist_builder(hp):
     inputs = tf.keras.layers.Input((32,32,1))
     res = tf.keras.layers.Conv2D(filters=6, kernel_size=(5, 5), activation='tanh',)(inputs)
     res = AvgPoolWithWeights(pool_size=(2, 2,), strides=(2, 2,), activation=tf.keras.activations.tanh)(res)
-    res = tf.keras.layers.Dropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res)
     res = tf.keras.layers.Conv2D(filters=16, kernel_size=(5, 5), activation='tanh')(res)
     res = AvgPoolWithWeights(pool_size=(2, 2,), strides=(2, 2), activation=tf.keras.activations.tanh)(res)
-    res = tf.keras.layers.Dropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res)
 
     res = tf.keras.layers.Conv2D(filters=120, kernel_size=(5, 5), activation='tanh')(res)
-    res = tf.keras.layers.Dropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res)
 
     res = tf.keras.layers.Flatten()(res)
-    res = tf.keras.layers.Dropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res)
     res = tf.keras.layers.Dense(units=84, activation='tanh')(res)
-    res = tf.keras.layers.Dropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res)
 
     res = RBFEuclidean(units=26)(res)
     model = tf.keras.models.Model(inputs, res)
