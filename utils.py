@@ -11,6 +11,7 @@ from keras.utils import np_utils
 from read_datasets import get_emnist_letters
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle as shuffle_dataset
+from copy import deepcopy
 
 
 def prepare_data(args):
@@ -27,17 +28,39 @@ def prepare_data(args):
         y_train = np.int32(y_train) - 1
         y_test = np.int32(y_test) - 1
 
+    x_train = x_train.astype('float32') / 255
+    x_test = x_test.astype('float32') / 255
 
-    x_train = np.float32(x_train) / 255.
-    x_test = np.float32(x_test) / 255.
+    # mean = np.array([np.mean(x_train[..., c]) for c in range(3)])
+    # std = np.array([np.std(x_train[..., c]) for c in range(3)])
+    #
+    # for x in [x_train, x_test]:
+    #     x[..., 0] -= mean[0]
+    #     x[..., 1] -= mean[1]
+    #     x[..., 2] -= mean[2]
+    #     x[..., 0] /= (std[0] + 1e-7)
+    #     x[..., 1] /= (std[1] + 1e-7)
+    #     x[..., 2] /= (std[2] + 1e-7)
+
+    x_train_mean = np.mean(x_train, axis=0)
+    x_train -= x_train_mean
+    x_test -= x_train_mean
+
+    # m = np.mean(x_train, axis=(1,2), keepdims=True)
+    # std = np.std(x_train, axis=(1,2), keepdims=True)
+    # x_train = (x_train - m) / std
+    # x_test = (x_test - m[:len(x_test)]) / std[:len(x_test)]
 
 
-    y_train = np_utils.to_categorical(y_train)
-    y_test = np_utils.to_categorical(y_test)
 
-    x_train, y_train = shuffle_dataset(x_train, y_train, random_state=42)
-    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
+    y_train = np_utils.to_categorical(y_train, 10)
 
+    y_test = np_utils.to_categorical(y_test, 10)
+
+    # x_train, y_train = shuffle_dataset(x_train, y_train, random_state=42)
+    # x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
+
+    x_val, y_val = deepcopy(x_test), deepcopy(y_test)
     return x_train, y_train, x_val, y_val, x_test, y_test,
 
 

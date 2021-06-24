@@ -4,6 +4,7 @@ from utils import *
 from custom_callbacks import *
 import deep_tempering as dt
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import LearningRateScheduler
 
 
 import os
@@ -44,6 +45,8 @@ def init_args():
     parser.add_argument("--burn_in_rearranger", type=int, default=21200)
     parser.add_argument("--burn_in_exchanger", type=int, default=25000)
     parser.add_argument("--do_swap", type=bool, default=True)
+
+    parser.add_argument('--use_ensemble_model', action='store_true')
 
     args = parser.parse_args()
     assert args.exchange_type
@@ -198,7 +201,7 @@ def init_clbks(args,  x_val, y_val):
 
     return clbks
 
-def lr_schedule(epoch):
+def lr_schedule_resnet(epoch):
     """Learning Rate Schedule
 
     Learning rate is scheduled to be reduced after 80, 120, 160, 180 epochs.
@@ -221,6 +224,12 @@ def lr_schedule(epoch):
         lr *= 1e-1
     print('Learning rate: ', lr)
     return lr
+
+def lr_schedule_lenet(epoch):
+    if epoch > 150:
+        return 0.0001
+    else:
+        return 0.001
 
 
 def main():
@@ -250,10 +259,20 @@ def main():
     #
     #       }
 
-    hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
-          120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
-         160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
-          180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
+    if args.model_name == 'resnet20':
+        hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
+              120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
+             160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
+              180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
+        lr_schedule = lr_schedule_resnet
+    else:
+        hp = {1: {'learning_rate': [1e-3 for _ in range(args.n_replicas)],
+                            'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
+                        150*390: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
+
+                                'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
+              }
+        lr_schedule = lr_schedule_lenet
 
     wandb.init(
         project="deep-tempering",
@@ -270,43 +289,63 @@ def main():
     config.gpu_options.per_process_gpu_memory_fraction = 1.
     session = tf.Session(config=config, )
 
-    model = dt.EnsembleModel(model_builders[args.model_builder])
+    if args.use_ensemble_model:
+        model = dt.EnsembleModel(model_builders[args.model_builder])
+        model.compile(optimizer=Adam(),
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'],
+                      n_replicas=args.n_replicas)
+    else:
+        model = model_builders[args.model_builder]()
+        model.compile(optimizer=Adam(lr=lr_schedule(0)),
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'],
+                      )
 
-    model.compile(optimizer=Adam(),
-                  loss='categorical_crossentropy',
-                  metrics=['accuracy'],
-                  n_replicas=args.n_replicas)
+
 
     model.summary()
 
     clbks = init_clbks(args, x_val, y_val)
 
+    if args.use_ensemble_model:
+        history = model.fit(x_train,
+                            y_train,
+                            validation_data=(x_test, y_test),
+                            hyper_params=hp,
+                            batch_size=args.batch_size,
+                            epochs=args.epochs,
+                            # random_data_split_state=args.random_seed,
+                            shuffle=True,
+                            callbacks=clbks
+                            )
 
+        addt_losses = clbks[0].exchange_logs
 
-    history = model.fit(x_train,
-                        y_train,
-                        validation_data=(x_test, y_test),
-                        hyper_params=hp,
-                        batch_size=args.batch_size,
-                        epochs=args.epochs,
-                        # random_data_split_state=args.random_seed,
-                        shuffle=True,
-                        callbacks=clbks
-                        )
+        log_additional_losses(addt_losses, args, args.do_swap)
+    else:
+        lr_sc = LearningRateScheduler(lr_schedule)
+        history = model.fit(x_train,
+                            y_train,
+                            validation_data=(x_test, y_test),
+                            batch_size=args.batch_size,
+                            epochs=args.epochs,
+                            # random_data_split_state=args.random_seed,
+                            shuffle=True,
+                            callbacks=[lr_sc]
+                            )
 
-    addt_losses = clbks[0].exchange_logs
     history = history.history
-
-
-    for step in range(len(history['acc_0'])):
+    mname = 'acc_0' if args.use_ensemble_model else 'acc'
+    for step in range(len(history[mname])):
         for k in sorted(history.keys()):
             wandb.log({k: history[k][step], 'epoch': step})
 
-    val_acc = np.array([history[f'val_acc_{i}'] for i in range(args.n_replicas)])
+    val_acc = np.array([history[f'val_acc_{i}'] for i in range(args.n_replicas)]) if args.use_ensemble_model else np.array([history[f'val_acc'] for i in range(args.n_replicas)])
     wandb.log({'best val acc, # of replica, step': [np.round(np.max(val_acc), 3), np.argmax(np.max(val_acc, axis=1)),
                                                     np.argmax(val_acc) % val_acc.shape[1]]})
 
-    log_additional_losses(addt_losses, args, args.do_swap)
+
 
     if args.exchange_type != 'no_swap':
 
