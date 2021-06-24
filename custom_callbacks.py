@@ -36,10 +36,14 @@ class LogExchangeLossesCallback(BaseExchangeCallback):
         losses = np.array(losses)[self.weights_sort_clbk.replica_order]
 
         if exchange_logs and not self.do_swap:
-            prev_losses = [exchange_logs[f'loss_{i}'] + [losses[i]] for i in range(n_replicas)]
-            avg_loss_per_temp = {i: np.mean((prev_losses[i][-self.n_prev_eval_steps:])) for i in range(n_replicas)}
-            misordered = len([i for i in range(n_replicas - 1) if avg_loss_per_temp[i + 1] < avg_loss_per_temp[i]])
-            misordered = misordered / (n_replicas - 1)
+            if n_replicas > 1:
+                prev_losses = [exchange_logs[f'loss_{i}'] + [losses[i]] for i in range(n_replicas)]
+                avg_loss_per_temp = {i: np.mean((prev_losses[i][-self.n_prev_eval_steps:])) for i in range(n_replicas)}
+                misordered = len([i for i in range(n_replicas - 1) if avg_loss_per_temp[i + 1] < avg_loss_per_temp[i]])
+
+                misordered = misordered / (n_replicas - 1)
+            else:
+                misordered = 0
             super().log_exchange_metrics(losses, num_misordered_temp=misordered, replica_order=self.weights_sort_clbk.replica_order)
 
         elif not exchange_logs and not self.do_swap:
@@ -679,13 +683,13 @@ class TempSortCallback(BaseExchangeCallback):
 
 
 class WeightsSortCallback(BaseExchangeCallback):
-    def __init__(self, exchange_data, hp_to_swap, swap_step, burn_in, n_prev_eval_steps):
+    def __init__(self, exchange_data, hp_to_swap, swap_step, burn_in, n_prev_eval_steps, n_replicas):
         super(WeightsSortCallback, self).__init__(exchange_data, swap_step, burn_in)
         self.n_prev_eval_steps = n_prev_eval_steps
         self.hp_to_swap = hp_to_swap
         self.num_rear = 0
         self.step_counter = 0
-        self.replica_order = [i for i in range(8)]
+        self.replica_order = [i for i in range(n_replicas)]
 
     def exchange(self):
 
