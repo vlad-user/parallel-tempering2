@@ -1,5 +1,5 @@
 import argparse
-from model_builders import lenet5_emnist_builder, lenet5_cifar10_builder, lenet5_cifar10_with_augmentation_builder, lenet5_cifar10_same_init_builder, resnet50_cifar10, densenet121_cifar10, densenet121_dropout_cifar10_aug, resnet_v2_20_cifar10, resnet20_v1_cifar10
+from model_builders import lenet5_emnist_builder, lenet5_cifar10_builder, lenet5_cifar10_with_augmentation_builder, lenet5_cifar10_same_init_builder, resnet50_cifar10, densenet121_cifar10, densenet121_dropout_cifar10_aug, resnet_v2_20_cifar10, resnet20_v1_cifar10, resnet56_v1_cifar, resnet121_v1_cifar
 from utils import *
 from custom_callbacks import *
 import deep_tempering as dt
@@ -245,26 +245,26 @@ def main():
                       'lenet5_cifar10_same_init_builder': lenet5_cifar10_same_init_builder, 'resnet50_cifar10_builder': resnet50_cifar10,
                       'densenet121_cifar10_builder': densenet121_cifar10, 'densenet121_dropout_cifar10_builder': densenet121_dropout_cifar10_aug,
                       'resnet20_v2_cifar10_builder': resnet_v2_20_cifar10,
-                      'resnet20_v1_cifar10_builder': resnet20_v1_cifar10}
+                      'resnet20_v1_cifar10_builder': resnet20_v1_cifar10,
+                      'resnet56_v1_cifar10_builder': resnet56_v1_cifar,
+                      'resnet121_v1_cifar10_builder': resnet121_v1_cifar,
+                      }
 
-    # hp = {1: {'learning_rate': [1e-3 for _ in range(args.n_replicas)],
-    #           'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
-    #       args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
-    #
-    #               'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
-    #       args.burn_in_hp + int(args.burn_in_hp / 2): {'learning_rate': np.linspace(args.lr_min / 10., args.lr_max / 10., args.n_replicas),
-    #
-    #                         'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)
-    #                                                    }
-    #
-    #       }
+    if args.model_name.startswith('resnet'):
+        hp = {1: {'learning_rate': [1e-3 for _ in range(args.n_replicas)],
+                  'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
+              args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
 
-    if args.model_name == 'resnet20':
-        hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
-              120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
-             160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
-              180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
-        lr_schedule = lr_schedule_resnet
+                      'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
+
+            }
+
+    # if args.model_name.startswith('resnet'):
+    #     hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
+    #           120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
+    #          160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
+    #           180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
+    #     lr_schedule = lr_schedule_resnet
     else:
         hp = {1: {'learning_rate': [1e-3 for _ in range(args.n_replicas)],
                             'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },

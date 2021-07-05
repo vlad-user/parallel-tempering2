@@ -339,14 +339,17 @@ def conv_block(x, growth_rate, name):
 
 
 
-def densenet121_dropout_cifar10_aug(hp):
+def densenet121_dropout_cifar10_aug(*args):
     # global backend, layers, models, keras_utils
     # backend, layers, models, keras_utils = get_submodules_from_kwargs(kwargs)
 
 
     # Determine proper input shape
-    dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
-
+    hp = args[0] if len(args) > 0 else None
+    if hp:
+        dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+    else:
+        dropout_rate = 0.2
 
     inputs = tf.keras.layers.Input(shape=(32, 32, 3))
     x = AugmentImages()(inputs)
@@ -647,6 +650,174 @@ def resnet20_v1_cifar10(*args):
     # Instantiate model.
     model = Model(inputs=inputs, outputs=outputs)
     return model
+
+def resnet56_v1_cifar(*args):
+    hp = args[0] if len(args) > 0 else None
+    if hp:
+        dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+
+    n = 9
+    depth = n * 6 + 2
+    input_shape = (32, 32, 3)
+    num_classes = 10
+    if (depth - 2) % 6 != 0:
+        raise ValueError('depth should be 6n+2 (eg 20, 32, 44 in [a])')
+    # Start model definition.
+    num_filters = 16
+    num_res_blocks = int((depth - 2) / 6)
+
+    inputs = Input(shape=input_shape)
+    x = AugmentImages()(inputs)
+    x = resnet_layer(inputs=x)
+    # Instantiate the stack of residual units
+    for stack in range(3):
+        for res_block in range(num_res_blocks):
+            strides = 1
+            if stack > 0 and res_block == 0:  # first layer but not first stack
+                strides = 2  # downsample
+            y = resnet_layer(inputs=x,
+                             num_filters=num_filters,
+                             strides=strides)
+            y = resnet_layer(inputs=y,
+                             num_filters=num_filters,
+                             activation=None)
+            if stack > 0 and res_block == 0:  # first layer but not first stack
+                # linear projection residual shortcut connection to match
+                # changed dims
+                x = resnet_layer(inputs=x,
+                                 num_filters=num_filters,
+                                 kernel_size=1,
+                                 strides=strides,
+                                 activation=None,
+                                 batch_normalization=False)
+            x = tf.keras.layers.add([x, y])
+            x = Activation('relu')(x)
+        num_filters *= 2
+
+    # Add classifier on top.
+    # v1 does not use BN after last shortcut connection-ReLU
+    x = AveragePooling2D(pool_size=8)(x)
+    y = Flatten()(x)
+    outputs = Dense(num_classes,
+                    activation='softmax',
+                    kernel_initializer='he_normal')(y)
+
+    # Instantiate model.
+    model = Model(inputs=inputs, outputs=outputs)
+    return model
+
+
+def resnet_v1_cifar(*args):
+    hp = args[0] if len(args) > 0 else None
+    if hp:
+        dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+
+    n = 9
+    depth = n * 6 + 2
+    input_shape = (32, 32, 3)
+    num_classes = 10
+    if (depth - 2) % 6 != 0:
+        raise ValueError('depth should be 6n+2 (eg 20, 32, 44 in [a])')
+    # Start model definition.
+    num_filters = 16
+    num_res_blocks = int((depth - 2) / 6)
+
+    inputs = Input(shape=input_shape)
+    x = AugmentImages()(inputs)
+    x = resnet_layer(inputs=x)
+    # Instantiate the stack of residual units
+    for stack in range(3):
+        for res_block in range(num_res_blocks):
+            strides = 1
+            if stack > 0 and res_block == 0:  # first layer but not first stack
+                strides = 2  # downsample
+            y = resnet_layer(inputs=x,
+                             num_filters=num_filters,
+                             strides=strides)
+            y = resnet_layer(inputs=y,
+                             num_filters=num_filters,
+                             activation=None)
+            if stack > 0 and res_block == 0:  # first layer but not first stack
+                # linear projection residual shortcut connection to match
+                # changed dims
+                x = resnet_layer(inputs=x,
+                                 num_filters=num_filters,
+                                 kernel_size=1,
+                                 strides=strides,
+                                 activation=None,
+                                 batch_normalization=False)
+            x = tf.keras.layers.add([x, y])
+            x = Activation('relu')(x)
+        num_filters *= 2
+
+    # Add classifier on top.
+    # v1 does not use BN after last shortcut connection-ReLU
+    x = AveragePooling2D(pool_size=8)(x)
+    y = Flatten()(x)
+    outputs = Dense(num_classes,
+                    activation='softmax',
+                    kernel_initializer='he_normal')(y)
+
+    # Instantiate model.
+    model = Model(inputs=inputs, outputs=outputs)
+    return model
+
+def resnet121_v1_cifar(*args):
+    hp = args[0] if len(args) > 0 else None
+    if hp:
+        dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+
+    n = 18
+    depth = n * 6 + 2
+    input_shape = (32, 32, 3)
+    num_classes = 10
+    if (depth - 2) % 6 != 0:
+        raise ValueError('depth should be 6n+2 (eg 20, 32, 44 in [a])')
+    # Start model definition.
+    num_filters = 16
+    num_res_blocks = int((depth - 2) / 6)
+
+    inputs = Input(shape=input_shape)
+    x = AugmentImages()(inputs)
+    x = resnet_layer(inputs=x)
+    # Instantiate the stack of residual units
+    for stack in range(3):
+        for res_block in range(num_res_blocks):
+            strides = 1
+            if stack > 0 and res_block == 0:  # first layer but not first stack
+                strides = 2  # downsample
+            y = resnet_layer(inputs=x,
+                             num_filters=num_filters,
+                             strides=strides)
+            y = resnet_layer(inputs=y,
+                             num_filters=num_filters,
+                             activation=None)
+            if stack > 0 and res_block == 0:  # first layer but not first stack
+                # linear projection residual shortcut connection to match
+                # changed dims
+                x = resnet_layer(inputs=x,
+                                 num_filters=num_filters,
+                                 kernel_size=1,
+                                 strides=strides,
+                                 activation=None,
+                                 batch_normalization=False)
+            x = tf.keras.layers.add([x, y])
+            x = Activation('relu')(x)
+        num_filters *= 2
+
+    # Add classifier on top.
+    # v1 does not use BN after last shortcut connection-ReLU
+    x = AveragePooling2D(pool_size=8)(x)
+    y = Flatten()(x)
+    outputs = Dense(num_classes,
+                    activation='softmax',
+                    kernel_initializer='he_normal')(y)
+
+    # Instantiate model.
+    model = Model(inputs=inputs, outputs=outputs)
+    return model
+
+
 
 
 
