@@ -258,6 +258,7 @@ def main():
                       'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
 
             }
+        lr_schedule = lr_schedule_resnet
 
     # if args.model_name.startswith('resnet'):
     #     hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
