@@ -37,6 +37,7 @@ def init_args():
     parser.add_argument("--lr_max", type=float, default=0.02)
     parser.add_argument("--dropout_rate_min", type=float, default=0.4)
     parser.add_argument("--dropout_rate_max", type=float, default=0.4)
+    parser.add_argument('--pbt_std', type=float, default=0.001)
 
     parser.add_argument("--random_seed", type=int, default=42)
 
@@ -185,13 +186,22 @@ def init_clbks(args,  x_val, y_val):
         clbks.append(weights_sort_clbk)
 
     elif args.exchange_type == 'swap_pbt':
-        hparams_dist_dict = {
-          # 'learning_rate': lambda *x: np.random.normal(0.0, config.pbt_std),
-            'learning_rate': lambda *x: np.random.choice([0.8, 1.2]),
-          'dropout_rate': lambda *x: 0
-          }
+        if args.hp_to_swap == 'learning_rate':
+            hparams_dist_dict = {
+              'learning_rate': lambda *x: np.random.normal(0.0, args.pbt_std),
+                # 'learning_rate': lambda *x: np.random.choice([0.8, 1.2]),
+              'dropout_rate': lambda *x: 0
+              }
+        elif args.hp_to_swap == 'dropout_rate':
+            hparams_dist_dict = {
+                'dropout_rate': lambda *x: np.random.normal(0.0, args.pbt_std),
+                # 'learning_rate': lambda *x: np.random.choice([0.8, 1.2]),
+                'learning_rate': lambda *x: 0
+            }
+        else:
+            raise NotImplementedError('Specified hp is not valid for PBT optimization.')
         exch_clbk = PBTExchangeTruncationSelectionCallback(
-                    exchange_data=(x_val, y_val),
+                     exchange_data=(x_val, y_val),
                      swap_step=args.swap_step,
                      explore_weights=False,
                      explore_hyperparams=True,
