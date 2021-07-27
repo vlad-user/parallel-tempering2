@@ -1,9 +1,12 @@
 import argparse
-from model_builders import lenet5_emnist_builder, lenet5_cifar10_builder, lenet5_cifar10_with_augmentation_builder, lenet5_cifar10_same_init_builder, resnet50_cifar10, densenet121_cifar10, densenet121_dropout_cifar10_aug, resnet_v2_20_cifar10, resnet20_v1_cifar10
+from model_builders import lenet5_emnist_builder, lenet5_cifar10_builder, lenet5_cifar10_with_augmentation_builder, lenet5_cifar10_same_init_builder, resnet50_cifar10, densenet121_cifar10, densenet121_dropout_cifar10_aug, resnet_v2_20_cifar10, resnet20_v1_cifar10, resnet56_v1_cifar, resnet121_v1_cifar
 from utils import *
 from custom_callbacks import *
 import deep_tempering as dt
 from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.callbacks import LearningRateScheduler
+
+import time
 
 
 import os
@@ -14,6 +17,7 @@ import wandb
 def init_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp_name", type=str)
+    parser.add_argument("--notes", type=str, default=' ')
 
 
     parser.add_argument("--model_name", type=str, default='lenet5')
@@ -44,6 +48,8 @@ def init_args():
     parser.add_argument("--burn_in_rearranger", type=int, default=21200)
     parser.add_argument("--burn_in_exchanger", type=int, default=25000)
     parser.add_argument("--do_swap", type=bool, default=True)
+
+    parser.add_argument('--use_ensemble_model', action='store_true')
 
     args = parser.parse_args()
     assert args.exchange_type
@@ -198,6 +204,36 @@ def init_clbks(args,  x_val, y_val):
 
     return clbks
 
+def lr_schedule_resnet(epoch):
+    """Learning Rate Schedule
+
+    Learning rate is scheduled to be reduced after 80, 120, 160, 180 epochs.
+    Called automatically every epoch as part of callbacks during training.
+
+    # Arguments
+        epoch (int): The number of epochs
+
+    # Returns
+        lr (float32): learning rate
+    """
+    lr = 1e-3
+    if epoch > 180:
+        lr *= 0.5e-3
+    elif epoch > 160:
+        lr *= 1e-3
+    elif epoch > 120:
+        lr *= 1e-2
+    elif epoch > 80:
+        lr *= 1e-1
+    print('Learning rate: ', lr)
+    return lr
+
+def lr_schedule_lenet(epoch):
+    if epoch > 150:
+        return 0.0001
+    else:
+        return 0.001
+
 
 def main():
     args = init_args()
@@ -212,30 +248,41 @@ def main():
                       'lenet5_cifar10_same_init_builder': lenet5_cifar10_same_init_builder, 'resnet50_cifar10_builder': resnet50_cifar10,
                       'densenet121_cifar10_builder': densenet121_cifar10, 'densenet121_dropout_cifar10_builder': densenet121_dropout_cifar10_aug,
                       'resnet20_v2_cifar10_builder': resnet_v2_20_cifar10,
-                      'resnet20_v1_cifar10_builder': resnet20_v1_cifar10}
+                      'resnet20_v1_cifar10_builder': resnet20_v1_cifar10,
+                      'resnet56_v1_cifar10_builder': resnet56_v1_cifar,
+                      'resnet121_v1_cifar10_builder': resnet121_v1_cifar,
+                      }
 
-    # hp = {1: {'learning_rate': [1e-3 for _ in range(args.n_replicas)],
-    #           'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
-    #       args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
-    #
-    #               'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
-    #       args.burn_in_hp + int(args.burn_in_hp / 2): {'learning_rate': np.linspace(args.lr_min / 10., args.lr_max / 10., args.n_replicas),
-    #
-    #                         'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)
-    #                                                    }
-    #
-    #       }
+    if args.model_name.startswith('resnet'):
+        hp = {1: {'learning_rate': [1e-3 for _ in range(args.n_replicas)],
+                  'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
+              args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
 
-    hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
-          120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
-         160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
-          180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
+                      'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
+
+            }
+        lr_schedule = lr_schedule_resnet
+
+    # if args.model_name.startswith('resnet'):
+    #     hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
+    #           120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
+    #          160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
+    #           180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
+    #     lr_schedule = lr_schedule_resnet
+    else:
+        hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
+                            'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
+                        args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
+
+                                'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
+              }
+        lr_schedule = lr_schedule_lenet
 
     wandb.init(
         project="deep-tempering",
         name=f"{args.exp_name}-{args.random_seed}",
         config=vars(args),
-        notes="test==val,opt sgd, 3 lrs",
+        notes=args.notes,
     )
 
     x_train, y_train, x_val, y_val, x_test, y_test = prepare_data(args)
@@ -246,43 +293,70 @@ def main():
     config.gpu_options.per_process_gpu_memory_fraction = 1.
     session = tf.Session(config=config, )
 
-    model = dt.EnsembleModel(model_builders[args.model_builder])
+    if args.use_ensemble_model:
+        model = dt.EnsembleModel(model_builders[args.model_builder])
+        model.compile(optimizer=SGD(),
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'],
+                      n_replicas=args.n_replicas)
+    else:
+        model = model_builders[args.model_builder]()
+        model.compile(optimizer=SGD(lr=lr_schedule(0)),
+                      loss='categorical_crossentropy',
+                      metrics=['accuracy'],
+                      )
 
-    model.compile(optimizer=SGD(),
-                  loss='categorical_crossentropy',
-                  metrics=['accuracy'],
-                  n_replicas=args.n_replicas)
+
 
     model.summary()
 
     clbks = init_clbks(args, x_val, y_val)
 
+    start = time.time()
+
+    if args.use_ensemble_model:
+        history = model.fit(x_train,
+                            y_train,
+                            validation_data=(x_test, y_test),
+                            hyper_params=hp,
+                            batch_size=args.batch_size,
+                            epochs=args.epochs,
+                            # random_data_split_state=args.random_seed,
+                            shuffle=True,
+                            callbacks=clbks
+                            )
+
+        addt_losses = clbks[0].exchange_logs
+
+        log_additional_losses(addt_losses, args, args.do_swap)
+    else:
+        lr_sc = LearningRateScheduler(lr_schedule)
+        history = model.fit(x_train,
+                            y_train,
+                            validation_data=(x_test, y_test),
+                            batch_size=args.batch_size,
+                            epochs=args.epochs,
+                            # random_data_split_state=args.random_seed,
+                            shuffle=True,
+                            callbacks=[lr_sc]
+                            )
 
 
-    history = model.fit(x_train,
-                        y_train,
-                        validation_data=(x_test, y_test),
-                        hyper_params=hp,
-                        batch_size=args.batch_size,
-                        epochs=args.epochs,
-                        # random_data_split_state=args.random_seed,
-                        shuffle=True,
-                        callbacks=clbks
-                        )
+    end  = time.time() - start
 
-    addt_losses = clbks[0].exchange_logs
+
     history = history.history
-
-
-    for step in range(len(history['acc_0'])):
+    mname = 'acc_0' if args.use_ensemble_model else 'acc'
+    for step in range(len(history[mname])):
         for k in sorted(history.keys()):
             wandb.log({k: history[k][step], 'epoch': step})
 
-    val_acc = np.array([history[f'val_acc_{i}'] for i in range(args.n_replicas)])
+    val_acc = np.array([history[f'val_acc_{i}'] for i in range(args.n_replicas)]) if args.use_ensemble_model else np.array([history[f'val_acc'] for i in range(args.n_replicas)])
     wandb.log({'best val acc, # of replica, step': [np.round(np.max(val_acc), 3), np.argmax(np.max(val_acc, axis=1)),
                                                     np.argmax(val_acc) % val_acc.shape[1]]})
+    wandb.log({'sec/epoch': end / args.epochs})
 
-    log_additional_losses(addt_losses, args, args.do_swap)
+
 
     if args.exchange_type != 'no_swap':
 

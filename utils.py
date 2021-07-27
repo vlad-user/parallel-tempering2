@@ -57,10 +57,10 @@ def prepare_data(args):
 
     y_test = np_utils.to_categorical(y_test, 10)
 
-    # x_train, y_train = shuffle_dataset(x_train, y_train, random_state=42)
-    # x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
+    x_train, y_train = shuffle_dataset(x_train, y_train, random_state=42)
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
-    x_val, y_val = deepcopy(x_test), deepcopy(y_test)
+    # x_val, y_val = deepcopy(x_test), deepcopy(y_test)
     return x_train, y_train, x_val, y_val, x_test, y_test,
 
 
