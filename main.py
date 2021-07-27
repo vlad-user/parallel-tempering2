@@ -3,8 +3,10 @@ from model_builders import lenet5_emnist_builder, lenet5_cifar10_builder, lenet5
 from utils import *
 from custom_callbacks import *
 import deep_tempering as dt
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.callbacks import LearningRateScheduler
+
+import time
 
 
 import os
@@ -15,6 +17,7 @@ import wandb
 def init_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp_name", type=str)
+    parser.add_argument("--notes", type=str, default=' ')
 
 
     parser.add_argument("--model_name", type=str, default='lenet5')
@@ -267,9 +270,9 @@ def main():
     #           180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
     #     lr_schedule = lr_schedule_resnet
     else:
-        hp = {1: {'learning_rate': [1e-3 for _ in range(args.n_replicas)],
+        hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
                             'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
-                        150*390: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
+                        args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
 
                                 'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
               }
@@ -279,7 +282,7 @@ def main():
         project="deep-tempering",
         name=f"{args.exp_name}-{args.random_seed}",
         config=vars(args),
-        notes="test==val,opt adam, 3 lrs",
+        notes=args.notes,
     )
 
     x_train, y_train, x_val, y_val, x_test, y_test = prepare_data(args)
@@ -292,13 +295,13 @@ def main():
 
     if args.use_ensemble_model:
         model = dt.EnsembleModel(model_builders[args.model_builder])
-        model.compile(optimizer=Adam(),
+        model.compile(optimizer=SGD(),
                       loss='categorical_crossentropy',
                       metrics=['accuracy'],
                       n_replicas=args.n_replicas)
     else:
         model = model_builders[args.model_builder]()
-        model.compile(optimizer=Adam(lr=lr_schedule(0)),
+        model.compile(optimizer=SGD(lr=lr_schedule(0)),
                       loss='categorical_crossentropy',
                       metrics=['accuracy'],
                       )
@@ -308,6 +311,8 @@ def main():
     model.summary()
 
     clbks = init_clbks(args, x_val, y_val)
+
+    start = time.time()
 
     if args.use_ensemble_model:
         history = model.fit(x_train,
@@ -336,6 +341,10 @@ def main():
                             callbacks=[lr_sc]
                             )
 
+
+    end  = time.time() - start
+
+
     history = history.history
     mname = 'acc_0' if args.use_ensemble_model else 'acc'
     for step in range(len(history[mname])):
@@ -345,6 +354,7 @@ def main():
     val_acc = np.array([history[f'val_acc_{i}'] for i in range(args.n_replicas)]) if args.use_ensemble_model else np.array([history[f'val_acc'] for i in range(args.n_replicas)])
     wandb.log({'best val acc, # of replica, step': [np.round(np.max(val_acc), 3), np.argmax(np.max(val_acc, axis=1)),
                                                     np.argmax(val_acc) % val_acc.shape[1]]})
+    wandb.log({'sec/epoch': end / args.epochs})
 
 
 
