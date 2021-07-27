@@ -218,7 +218,7 @@ class MetropolisExchangeMultipleHPCallbackLogAllProbas(BaseExchangeCallback):
     def __init__(self, exchange_data, swap_step=1, burn_in=1, coeff=1., n_prev_eval_steps=10, weights_sort_clbk=None):
         super(MetropolisExchangeOneHPCallbackLogAllProbas, self).__init__(exchange_data, swap_step, burn_in)
         self.coeff = coeff
-        self.hpname = hp_to_swap
+        self.hpname = None
         self.n_prev_eval_steps = n_prev_eval_steps
         self.weights_sort_clbk = weights_sort_clbk
 
