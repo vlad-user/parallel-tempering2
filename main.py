@@ -374,11 +374,13 @@ def main():
 
         ex_history = clbks[1].exchange_logs
 
-        avg_num_temp_repl_visited, frac_visited_all_temp = calc_num_temp_replicas_visited(ex_history,
-                                                                                          args.n_replicas,
-                                                                                          replica_order=clbks[0].weights_sort_clbk.replica_order)
-        wandb.log({'avg_num_temp_repl_visited': avg_num_temp_repl_visited})
-        wandb.log({'frac_of_repl_visited_all_temp': frac_visited_all_temp})
+        if not 'pbt' in args.exchange_type:
+
+            avg_num_temp_repl_visited, frac_visited_all_temp = calc_num_temp_replicas_visited(ex_history,
+                                                                                              args.n_replicas,
+                                                                                              replica_order=clbks[0].weights_sort_clbk.replica_order)
+            wandb.log({'avg_num_temp_repl_visited': avg_num_temp_repl_visited})
+            wandb.log({'frac_of_repl_visited_all_temp': frac_visited_all_temp})
 
         if 'adj' in args.exchange_type:
             log_exchange_data_mh_temp_adj_log_all_probas(ex_history, args, args.do_swap)
