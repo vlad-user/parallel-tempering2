@@ -124,23 +124,22 @@ def log_exchange_data_mh(history, config, swap):
         wandb.log({'num of exchanges': history['swaped'].count(1)})
 
 
-def log_exchange_data_mh_log_all_probas(history, config, swap):
+def log_exchange_data_mh_log_all_probas(history, hp_to_swap, n_replicas, swap, prefix):
     for i, step in enumerate(history['step']):
         if swap:
-            wandb.log({'exchange probas': history['proba'][i], 'batch': step} )
-            # wandb.log({'exchange probas for all t': history['all_probas'][i], 'batch': step} )
-            wandb.log({'exchange deltas for all t': history['all_deltas'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange probas': history['proba'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange deltas for all t': history['all_deltas'][i], 'batch': step} )
 
-            wandb.log({'acceptance ratio': history['accept_ratio'][i], 'batch': step} )
-            wandb.log({'delta': history['delta'][i], 'batch': step} )
-            wandb.log({'exchange_pair': history['exchange_pair'][i], 'batch': step} )
-            wandb.log({'swaped': history['swaped'][i], 'batch': step} )
+            wandb.log({f'{prefix}acceptance ratio': history['accept_ratio'][i], 'batch': step} )
+            wandb.log({f'{prefix}delta': history['delta'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange_pair': history['exchange_pair'][i], 'batch': step} )
+            wandb.log({f'{prefix}swaped': history['swaped'][i], 'batch': step} )
 
-        for j in range(config.n_replicas):
-            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i], 'batch': step} )
-            wandb.log({f'exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
+        for j in range(n_replicas):
+            wandb.log({f'replica_{j}_{hp_to_swap}': history[j][hp_to_swap][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
 
-        wandb.log({'num_misordered_temp': history['num_misordered_temp'][i], 'batch': step})
+        wandb.log({f'{prefix}num_misordered_temp': history['num_misordered_temp'][i], 'batch': step})
         try:
             wandb.log({f'num_rear': history[f'num_rear'][i], 'batch': step})
         except KeyError:
@@ -154,24 +153,23 @@ def log_exchange_data_mh_log_all_probas(history, config, swap):
         wandb.log({'num of exchange attempts': len(history['proba'])})
         wandb.log({'num of exchanges': history['swaped'].count(1)})
 
-def log_exchange_data_mh_temp_sort_log_all_probas(history, config, swap):
+def log_exchange_data_mh_temp_sort_log_all_probas(history, hp_to_swap, n_replicas, swap, prefix):
     for i, step in enumerate(history['step']):
         if swap:
-            wandb.log({'exchange probas': history['proba'][i], 'batch': step} )
-            # wandb.log({'exchange probas for all t': history['all_probas'][i], 'batch': step} )
-            wandb.log({'exchange deltas for all t': history['all_deltas'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange probas': history['proba'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange deltas for all t': history['all_deltas'][i], 'batch': step} )
 
-            wandb.log({'acceptance ratio': history['accept_ratio'][i], 'batch': step} )
-            wandb.log({'delta': history['delta'][i], 'batch': step} )
-            wandb.log({'exchange_pair': history['exchange_pair'][i], 'batch': step} )
-            wandb.log({'swaped': history['swaped'][i], 'batch': step} )
-            wandb.log({'temp_order': history['temp_order'][i], 'batch': step} )
-            wandb.log({'num_misordered_temp': history['num_misordered_temp'][i], 'batch': step} )
+            wandb.log({f'{prefix}acceptance ratio': history['accept_ratio'][i], 'batch': step} )
+            wandb.log({f'{prefix}delta': history['delta'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange_pair': history['exchange_pair'][i], 'batch': step} )
+            wandb.log({f'{prefix}swaped': history['swaped'][i], 'batch': step} )
+            wandb.log({f'{prefix}temp_order': history['temp_order'][i], 'batch': step} )
+            wandb.log({f'{prefix}num_misordered_temp': history['num_misordered_temp'][i], 'batch': step} )
 
 
-        for j in range(config.n_replicas):
-            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i], 'batch': step} )
-            wandb.log({f'exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
+        for j in range(n_replicas):
+            wandb.log({f'replica_{j}_{hp_to_swap}': history[j][hp_to_swap][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
 
     if swap:
         wandb.log({'num of exchange attempts': len(history['proba'])})
@@ -213,56 +211,52 @@ def log_exchange_data_mh_temp_adj(history, config, swap):
         wandb.log({'num of exchange attempts': len(history['proba'])})
         wandb.log({'num of exchanges': history['swaped'].count(1)})
 
-def log_exchange_data_mh_temp_adj_log_all_probas(history, config, swap):
+def log_exchange_data_mh_temp_adj_log_all_probas(history, hp_to_swap, n_replicas, temp_adj_step, swap, prefix):
     for i, step in enumerate(history['step']):
         if swap:
-            wandb.log({'exchange probas': history['proba'][i], 'batch': step} )
-            wandb.log({'acceptance ratio': history['accept_ratio'][i], 'batch': step} )
-            wandb.log({'delta': history['delta'][i], 'batch': step} )
-            wandb.log({'exchange deltas for all t': history['all_deltas'][i], 'batch': step} )
-            wandb.log({'exchange_pair': history['exchange_pair'][i], 'batch': step} )
-            wandb.log({'swaped': history['swaped'][i], 'batch': step} )
-            wandb.log({'num_misordered_temp': history['num_misordered_temp'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange probas': history['proba'][i], 'batch': step} )
+            wandb.log({f'{prefix}acceptance ratio': history['accept_ratio'][i], 'batch': step} )
+            wandb.log({f'{prefix}delta': history['delta'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange deltas for all t': history['all_deltas'][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange_pair': history['exchange_pair'][i], 'batch': step} )
+            wandb.log({f'{prefix}swaped': history['swaped'][i], 'batch': step} )
+            wandb.log({f'{prefix}num_misordered_temp': history['num_misordered_temp'][i], 'batch': step} )
 
-            # if i % config.temp_adj_step == 0 and step != 0:  #log history of proposed hp values
-            #     for k in history:
-            #         if str(k).startswith('hp_v_'):
-            #             wandb.log({f'adj_value_for_{k}': history[k][(i // config.temp_adj_step) - 1], 'batch': step})
-            if i % config.temp_adj_step == 0:  # log history of proposed hp values
+            if i % temp_adj_step == 0:  # log history of proposed hp values
                 for k in history:
                     if step != 0:
                         if str(k).startswith('difference_beta_indx_'):
-                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+                            wandb.log({f'{prefix}{k}': history[k][(i // temp_adj_step) - 1], 'batch': step})
 
                         elif str(k).startswith('difference_clipped_beta_indx_'):
-                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+                            wandb.log({f'{prefix}{k}': history[k][(i // temp_adj_step) - 1], 'batch': step})
 
                         elif str(k).startswith('beta_'):
-                            wandb.log({k: history[k][(i // config.temp_adj_step) - 1], 'batch': step})
+                            wandb.log({f'{prefix}{k}': history[k][(i // temp_adj_step) - 1], 'batch': step})
 
                     if str(k).startswith('hp_'):
-                        wandb.log({k: history[k][(i // config.temp_adj_step)], 'batch': step})
+                        wandb.log({f'{prefix}{k}': history[k][(i // temp_adj_step)], 'batch': step})
 
-        for j in range(config.n_replicas):
-            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i], 'batch': step} )
-            wandb.log({f'exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
+        for j in range(n_replicas):
+            wandb.log({f'replica_{j}_{hp_to_swap}': history[j][hp_to_swap][i], 'batch': step} )
+            wandb.log({f'{prefix}exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step} )
         try:
             wandb.log({f'num_rear': history[f'num_rear'][i], 'batch': step})
         except KeyError:
             continue
 
     if swap:
-        wandb.log({'num of exchange attempts': len(history['proba'])})
-        wandb.log({'num of exchanges': history['swaped'].count(1)})
+        wandb.log({f'{prefix}num of exchange attempts': len(history['proba'])})
+        wandb.log({f'{prefix}num of exchanges': history['swaped'].count(1)})
 
 
 
-def log_exchange_data_pbt(history, config):
+def log_exchange_data_pbt(history, hp_to_swap, n_replicas, prefix):
     for i, step in enumerate(history['step']):
-        wandb.log({'optimal replica': history['optimal_replica'][i], 'batch': step})
-        for j in range(config.n_replicas):
-            wandb.log({f'replica_{j}_{config.hp_to_swap}': history[j][config.hp_to_swap][i], 'batch': step})
-            wandb.log({f'exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step})
+        wandb.log({f'{prefix}optimal replica': history['optimal_replica'][i], 'batch': step})
+        for j in range(n_replicas):
+            wandb.log({f'replica_{j}_{hp_to_swap}': history[j][hp_to_swap][i], 'batch': step})
+            wandb.log({f'{prefix}exchange_loss_{j}': history[f'loss_{j}'][i], 'batch': step})
 
 
 def assign_up_down_labels(history, hp_range, n_replicas, hp_to_swap):

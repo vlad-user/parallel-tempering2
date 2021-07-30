@@ -19,6 +19,8 @@ def init_args():
     parser.add_argument("--exp_name", type=str)
     parser.add_argument("--notes", type=str, default=' ')
 
+    parser.add_argument("--multiple_hp_exchange",  action='store_true')
+
 
     parser.add_argument("--model_name", type=str, default='lenet5')
     parser.add_argument("--dataset_name", type=str, default='cifar10')
@@ -82,132 +84,138 @@ def init_clbks(args,  x_val, y_val):
 
     clbks = [all_losses_clbk]
 
-    if args.exchange_type == 'swap':
-        exch_clbk = MetropolisExchangeOneHPCallbackLogAllProbas(
-                              exchange_data=(x_val, y_val),
-                              hp_to_swap=args.hp_to_swap,
-                              swap_step=args.swap_step,
-                              burn_in=args.burn_in_exchanger,
-                              coeff=args.proba_coeff_C,
-                              n_prev_eval_steps=args.n_prev_eval_steps,
-                              weights_sort_clbk=None
-                              )
-        clbks.append(exch_clbk)
+    if args.multiple_hp_exchange: #ToDo: weights sort separately for diff hp
+        hps_to_swap = ['learning_rate', 'dropout_rate']
+    else:
+        hps_to_swap = [args.hp_to_swap]
 
-    elif args.exchange_type == 'swap_adj':
-        exch_clbk = MetropolisExchangeTempAdjustmentCallbackLogAllProbas(
-            all_losses_clbk=all_losses_clbk,
-            exchange_data=(x_val, y_val),
-            hp_to_swap=args.hp_to_swap,
-            swap_step=args.swap_step,
-            burn_in=args.burn_in_exchanger,
-            coeff=args.proba_coeff_C,
-            temp_adj_step=args.temp_adj_step,
-            n_prev_eval_steps=args.n_prev_eval_steps,
-            weights_sort_clbk=None
+    for i, hp_to_swap in enumerate(hps_to_swap):
+        if args.exchange_type == 'swap':
+            exch_clbk = MetropolisExchangeOneHPCallbackLogAllProbas(
+                                  exchange_data=(x_val, y_val),
+                                  hp_to_swap=hp_to_swap,
+                                  swap_step=args.swap_step,
+                                  burn_in=args.burn_in_exchanger + (args.swap_step / len(hps_to_swap)) * i, # offset for diff hp
+                                  coeff=args.proba_coeff_C,
+                                  n_prev_eval_steps=args.n_prev_eval_steps,
+                                  weights_sort_clbk=None
+                                  )
+            clbks.append(exch_clbk)
 
-        )
-        clbks.append(exch_clbk)
+        elif args.exchange_type == 'swap_adj':
+            exch_clbk = MetropolisExchangeTempAdjustmentCallbackLogAllProbas(
+                all_losses_clbk=all_losses_clbk,
+                exchange_data=(x_val, y_val),
+                hp_to_swap=hp_to_swap,
+                swap_step=args.swap_step,
+                burn_in=args.burn_in_exchanger + (args.swap_step / len(hps_to_swap)) * i,
+                coeff=args.proba_coeff_C,
+                temp_adj_step=args.temp_adj_step,
+                n_prev_eval_steps=args.n_prev_eval_steps,
+                weights_sort_clbk=None
 
-    elif args.exchange_type == 'swap_sort_adj':
-        exch_clbk = MetropolisExchangeTempAdjustmentCallbackLogAllProbas(
-            all_losses_clbk=all_losses_clbk,
-            exchange_data=(x_val, y_val),
-            hp_to_swap=args.hp_to_swap,
-            swap_step=args.swap_step,
-            burn_in=args.burn_in_exchanger,
-            coeff=args.proba_coeff_C,
-            temp_adj_step=args.temp_adj_step,
-            n_prev_eval_steps=args.n_prev_eval_steps,
-            weights_sort_clbk=weights_sort_clbk
+            )
+            clbks.append(exch_clbk)
 
-        )
-        clbks.append(exch_clbk)
+        elif args.exchange_type == 'swap_sort_adj':
+            exch_clbk = MetropolisExchangeTempAdjustmentCallbackLogAllProbas(
+                all_losses_clbk=all_losses_clbk,
+                exchange_data=(x_val, y_val),
+                hp_to_swap=hp_to_swap,
+                swap_step=args.swap_step,
+                burn_in=args.burn_in_exchanger + (args.swap_step / len(hps_to_swap)) * i,
+                coeff=args.proba_coeff_C,
+                temp_adj_step=args.temp_adj_step,
+                n_prev_eval_steps=args.n_prev_eval_steps,
+                weights_sort_clbk=weights_sort_clbk
 
-        clbks.append(weights_sort_clbk)
+            )
+            clbks.append(exch_clbk)
+
+            clbks.append(weights_sort_clbk)
 
 
-    elif args.exchange_type == 'swap_rear_adj':
-        rearanger_clbk = ReplicaRearrangerCallback(exchange_data=(x_val, y_val),
-                                                   swap_step=args.swap_step,
-                                                   burn_in=args.burn_in_rearranger,
-                                                   n_prev_eval_steps=args.n_prev_eval_steps,
-                                                   perturb_func=None
-                                                   )
-        exch_clbk = MetropolisExchangeTempAdjustmentCallbackLogAllProbas(
-            all_losses_clbk=all_losses_clbk,
-            exchange_data=(x_val, y_val),
-            hp_to_swap=args.hp_to_swap,
-            swap_step=args.swap_step,
-            burn_in=args.burn_in_exchanger,
-            coeff=args.proba_coeff_C,
-            temp_adj_step=args.temp_adj_step,
-            n_prev_eval_steps=args.n_prev_eval_steps,
-            weights_sort_clbk=None
+        elif args.exchange_type == 'swap_rear_adj':
+            rearanger_clbk = ReplicaRearrangerCallback(exchange_data=(x_val, y_val),
+                                                       swap_step=args.swap_step,
+                                                       burn_in=args.burn_in_rearranger,
+                                                       n_prev_eval_steps=args.n_prev_eval_steps,
+                                                       perturb_func=None
+                                                       )
+            exch_clbk = MetropolisExchangeTempAdjustmentCallbackLogAllProbas(
+                all_losses_clbk=all_losses_clbk,
+                exchange_data=(x_val, y_val),
+                hp_to_swap=hp_to_swap,
+                swap_step=args.swap_step,
+                burn_in=args.burn_in_exchanger + (args.swap_step / len(hps_to_swap)) * i,
+                coeff=args.proba_coeff_C,
+                temp_adj_step=args.temp_adj_step,
+                n_prev_eval_steps=args.n_prev_eval_steps,
+                weights_sort_clbk=None
 
-        )
-        clbks.append(exch_clbk)
+            )
+            clbks.append(exch_clbk)
 
-        clbks.append(rearanger_clbk)
+            clbks.append(rearanger_clbk)
 
-    elif args.exchange_type == 'swap_rear':
-        rearanger_clbk = ReplicaRearrangerCallback(exchange_data=(x_val, y_val),
-                                                   swap_step=args.swap_step,
-                                                   burn_in=args.burn_in_rearranger,
-                                                   n_prev_eval_steps=args.n_prev_eval_steps,
-                                                   perturb_func=None
-                                                   )
-        exch_clbk = MetropolisExchangeOneHPCallbackLogAllProbas(
-                              exchange_data=(x_val, y_val),
-                              hp_to_swap=args.hp_to_swap,
-                              swap_step=args.swap_step,
-                              burn_in=args.burn_in_exchanger,
-                              coeff=args.proba_coeff_C,
-                              n_prev_eval_steps=args.n_prev_eval_steps,
-                              weights_sort_clbk=None
-                              )
-        clbks.append(exch_clbk)
+        elif args.exchange_type == 'swap_rear':
+            rearanger_clbk = ReplicaRearrangerCallback(exchange_data=(x_val, y_val),
+                                                       swap_step=args.swap_step,
+                                                       burn_in=args.burn_in_rearranger,
+                                                       n_prev_eval_steps=args.n_prev_eval_steps,
+                                                       perturb_func=None
+                                                       )
+            exch_clbk = MetropolisExchangeOneHPCallbackLogAllProbas(
+                                  exchange_data=(x_val, y_val),
+                                  hp_to_swap=hp_to_swap,
+                                  swap_step=args.swap_step,
+                                  burn_in=args.burn_in_exchanger + (args.swap_step / len(hps_to_swap)) * i,
+                                  coeff=args.proba_coeff_C,
+                                  n_prev_eval_steps=args.n_prev_eval_steps,
+                                  weights_sort_clbk=None
+                                  )
+            clbks.append(exch_clbk)
 
-        clbks.append(rearanger_clbk)
-    
-    elif args.exchange_type == 'swap_sort':
-        exch_clbk = MetropolisExchangeOneHPCallbackLogAllProbas(
-                              exchange_data=(x_val, y_val),
-                              hp_to_swap=args.hp_to_swap,
-                              swap_step=args.swap_step,
-                              burn_in=args.burn_in_exchanger,
-                              coeff=args.proba_coeff_C,
-                              n_prev_eval_steps=args.n_prev_eval_steps,
-                              weights_sort_clbk=weights_sort_clbk
-                              )
+            clbks.append(rearanger_clbk)
 
-        clbks.append(exch_clbk)
+        elif args.exchange_type == 'swap_sort':
+            exch_clbk = MetropolisExchangeOneHPCallbackLogAllProbas(
+                                  exchange_data=(x_val, y_val),
+                                  hp_to_swap=hp_to_swap,
+                                  swap_step=args.swap_step,
+                                  burn_in=args.burn_in_exchanger + (args.swap_step / len(hps_to_swap)) * i,
+                                  coeff=args.proba_coeff_C,
+                                  n_prev_eval_steps=args.n_prev_eval_steps,
+                                  weights_sort_clbk=weights_sort_clbk
+                                  )
 
-        clbks.append(weights_sort_clbk)
+            clbks.append(exch_clbk)
 
-    elif args.exchange_type == 'swap_pbt':
-        if args.hp_to_swap == 'learning_rate':
-            hparams_dist_dict = {
-              'learning_rate': lambda *x: np.random.normal(0.0, args.pbt_std),
-                # 'learning_rate': lambda *x: np.random.choice([0.8, 1.2]),
-              'dropout_rate': lambda *x: 0
-              }
-        elif args.hp_to_swap == 'dropout_rate':
-            hparams_dist_dict = {
-                'dropout_rate': lambda *x: np.random.normal(0.0, args.pbt_std),
-                # 'learning_rate': lambda *x: np.random.choice([0.8, 1.2]),
-                'learning_rate': lambda *x: 0
-            }
-        else:
-            raise NotImplementedError('Specified hp is not valid for PBT optimization.')
-        exch_clbk = PBTExchangeTruncationSelectionCallback(
-                     exchange_data=(x_val, y_val),
-                     swap_step=args.swap_step,
-                     explore_weights=False,
-                     explore_hyperparams=True,
-                     burn_in=args.burn_in_exchanger,
-                     hyperparams_dist=hparams_dist_dict)
-        clbks.append(exch_clbk)
+            clbks.append(weights_sort_clbk)
+
+        elif args.exchange_type == 'swap_pbt':
+            if hp_to_swap == 'learning_rate':
+                hparams_dist_dict = {
+                  # 'learning_rate': lambda *x: np.random.normal(0.0, args.pbt_std),
+                    'learning_rate': lambda *x: np.random.choice([0.8, 1.2]),
+                  'dropout_rate': lambda *x: 0
+                  }
+            elif hp_to_swap == 'dropout_rate':
+                hparams_dist_dict = {
+                    # 'dropout_rate': lambda *x: np.random.normal(0.0, args.pbt_std),
+                    'dropout_rate': lambda *x: np.random.choice([0.8, 1.2]),
+                    'learning_rate': lambda *x: 0
+                }
+            else:
+                raise NotImplementedError('Specified hp is not valid for PBT optimization.')
+            exch_clbk = PBTExchangeTruncationSelectionCallback(
+                         exchange_data=(x_val, y_val),
+                         swap_step=args.swap_step,
+                         explore_weights=False,
+                         explore_hyperparams=True,
+                         burn_in=args.burn_in_exchanger + (args.swap_step / len(hps_to_swap)) * i,
+                         hyperparams_dist=hparams_dist_dict)
+            clbks.append(exch_clbk)
 
     
     # if args.exchange_type != 'no_swap':
@@ -371,23 +379,35 @@ def main():
 
 
     if args.exchange_type != 'no_swap':
-
-        ex_history = clbks[1].exchange_logs
-
-        avg_num_temp_repl_visited, frac_visited_all_temp = calc_num_temp_replicas_visited(ex_history,
-                                                                                          args.n_replicas,
-                                                                                          replica_order=clbks[0].weights_sort_clbk.replica_order)
-        wandb.log({'avg_num_temp_repl_visited': avg_num_temp_repl_visited})
-        wandb.log({'frac_of_repl_visited_all_temp': frac_visited_all_temp})
-
-        if 'adj' in args.exchange_type:
-            log_exchange_data_mh_temp_adj_log_all_probas(ex_history, args, args.do_swap)
-
-        elif 'pbt' in args.exchange_type:
-            log_exchange_data_pbt(ex_history, args)
-
+        if args.multiple_hp_exchange:  # ToDo: weights sort separately for diff hp
+            hps_to_swap = ['learning_rate', 'dropout_rate']
         else:
-            log_exchange_data_mh_log_all_probas(ex_history, args, args.do_swap)
+            hps_to_swap = [args.hp_to_swap]
+
+        for i, hp in enumerate(hps_to_swap):
+            prefix = '' if len(hps_to_swap) == 1 else f'{hp} '
+
+
+            ex_history = clbks[i+1].exchange_logs
+
+            print(ex_history)
+
+            if not 'pbt' in args.exchange_type:
+
+                avg_num_temp_repl_visited, frac_visited_all_temp = calc_num_temp_replicas_visited(ex_history,
+                                                                                                  args.n_replicas,
+                                                                                                  replica_order=clbks[0].weights_sort_clbk.replica_order)
+                wandb.log({f'{prefix}avg_num_temp_repl_visited': avg_num_temp_repl_visited})
+                wandb.log({f'{prefix}frac_of_repl_visited_all_temp': frac_visited_all_temp})
+
+            if 'adj' in args.exchange_type:
+                log_exchange_data_mh_temp_adj_log_all_probas(ex_history, hp, args.n_replicas, args.temp_adj_step, args.do_swap, prefix)
+
+            elif 'pbt' in args.exchange_type:
+                log_exchange_data_pbt(ex_history, hp, args.n_replicas, prefix)
+
+            else:
+                log_exchange_data_mh_log_all_probas(ex_history, hp, args.n_replicas, args.do_swap, prefix)
 
 if __name__ == '__main__':
     main()

@@ -213,105 +213,7 @@ class MetropolisExchangeOneHPCallbackLogAllProbas(BaseExchangeCallback):
                                      num_misordered_temp=self.calc_misordered_temp(losses)
                                      )
 
-class MetropolisExchangeMultipleHPCallbackLogAllProbas(BaseExchangeCallback):
-    """Exchanges of hyperparameters based on Metropolis acceptance criteria."""
-    def __init__(self, exchange_data, swap_step=1, burn_in=1, coeff=1., n_prev_eval_steps=10, weights_sort_clbk=None):
-        super(MetropolisExchangeOneHPCallbackLogAllProbas, self).__init__(exchange_data, swap_step, burn_in)
-        self.coeff = coeff
-        self.hpname = None
-        self.n_prev_eval_steps = n_prev_eval_steps
-        self.weights_sort_clbk = weights_sort_clbk
 
-    def calc_misordered_temp(self, curr_losses):
-        n_replicas = self.model.n_replicas
-        exchange_logs = getattr(self, 'exchange_logs', None)
-        if exchange_logs:
-            losses_history = [exchange_logs[f'loss_{i}'][-(self.n_prev_eval_steps-1):] for i in
-                              range(n_replicas)]
-
-            if self.weights_sort_clbk:
-                repl2t = {r: i for i,r in enumerate(self.weights_sort_clbk.replica_order)}
-            else:
-                repl2t = {i: i for i in range(n_replicas)}
-            # print(len(losses_history))
-
-            losses_history_by_temp = {i: [] for i in range(n_replicas)}
-
-            for s in range(len(losses_history[0])):
-                for r in range(n_replicas):
-                    losses_history_by_temp[repl2t[r]].append(losses_history[r][s])
-                    if exchange_logs['swaped'][s]:
-                        exch_pair = exchange_logs['exchange_pair'][s]
-                        repl2t[exch_pair[0]], repl2t[exch_pair[1]] = repl2t[exch_pair[1]], repl2t[exch_pair[0]]
-            for i in range(n_replicas):
-                losses_history_by_temp[repl2t[i]].append(curr_losses[i])
-
-            avg_loss_per_temp = {k: np.mean(v) for k, v in losses_history_by_temp.items()}
-            misordered = len([i for i in range(n_replicas - 1) if avg_loss_per_temp[i + 1] < avg_loss_per_temp[i]])
-        else:
-            misordered = 0
-        return misordered / (n_replicas - 1)
-
-
-
-
-    def exchange(self, **kwargs):
-        """Exchanges hyperparameters between adjacent replicas.
-
-        This function is called once on the beginning of training to
-        log initial values of hyperparameters and then it is called
-        every `swap_step` steps.
-        """
-        # pick random hyperparameter to exchange
-
-        hp = self.ordered_hyperparams
-        hpname = kwargs.get('hpname', random.choice(list(hp.keys())))
-
-        # pick random replica pair to exchange
-        n_replicas = self.model.n_replicas
-        exchange_pair = kwargs.get('exchange_pair', np.random.randint(1, n_replicas))
-
-        losses = self.evaluate_exchange_losses()
-
-        hyperparams = [h[1] for h in hp[hpname]]
-        replicas_ids = [h[0] for h in hp[hpname]]
-
-        if 'dropout' in hpname:
-            betas = [(1. - hp) / hp for hp in hyperparams]
-        else:
-            betas = [1. / hp for hp in hyperparams]
-
-        deltas = [self.coeff * (losses[replicas_ids[i]] - losses[replicas_ids[i - 1]]) * (betas[i] - betas[i - 1]) for i in range(1, len(betas))]
-        probas = [min(np.exp(d), 1.) for d in deltas]
-
-        i = exchange_pair
-        j = exchange_pair - 1
-
-        delta = deltas[exchange_pair - 1]
-        proba = probas[exchange_pair - 1]
-
-        if np.random.uniform() < proba:
-            swaped = 1
-            self.model.hpspace.swap_between(replicas_ids[i], replicas_ids[j], hpname)
-        else:
-            swaped = 0
-
-        if getattr(self, 'exchange_logs', None):
-            accpt_ratio = (self.exchange_logs['swaped'].count(1) + swaped) / \
-                          (len(self.exchange_logs['proba']) + 1)
-        else:
-            accpt_ratio = swaped
-
-        super().log_exchange_metrics(losses,
-                                     proba=proba,
-                                     all_deltas=deltas,
-                                     hpname=hpname,
-                                     swaped=swaped,
-                                     accept_ratio=accpt_ratio,
-                                     delta=delta,
-                                     exchange_pair=[replicas_ids[i], replicas_ids[j]],
-                                     num_misordered_temp=self.calc_misordered_temp(losses)
-                                     )
 
 class PBTExchangeTruncationSelectionCallback(BaseExchangeCallback):
     """Exchanges of parameters based on PBT scheduling.
@@ -603,8 +505,12 @@ class MetropolisExchangeTempAdjustmentCallbackLogAllProbas(BaseExchangeCallback)
             beta_adj = ((betas[i] + beta_new) / 2.)  # new value should be between beta_pr and beta_next
 
             beta_adj, diff, diff_clipped = self.calc_adj_value(betas[i], beta_adj, beta_pr, beta_next)
-            hp_value_new = 1. / beta_adj
+            if 'dropout' in hp_name:
+                hp_value_new = 1. / (beta_adj + 1)
+            else:
+                hp_value_new = 1. / beta_adj
             betas_to_log[i] = beta_adj
+            print(hp_value_new)
 
             # adj_hp_values[np.round(hp_values[i], 5)] = hp_value_new
             diff_btw_betas[i] = diff
@@ -654,6 +560,7 @@ class MetropolisExchangeTempAdjustmentCallbackLogAllProbas(BaseExchangeCallback)
 
         delta = deltas[exchange_pair - 1]
         proba = probas[exchange_pair - 1]
+        # proba = 0.
 
         if np.random.uniform() < proba:
             swaped = 1
