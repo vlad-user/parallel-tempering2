@@ -116,3 +116,22 @@ def _maybe_download_emnist():
     print()
     statinfo = os.stat(filepath)
     print('Successfully downloaded EMNIST dataset', statinfo.st_size, 'bytes.')
+
+
+# def read_cd_dataset():
+#     data = np.zeros((, 180, 180))
+#     labels = np.zeros((,))
+#     i = 0
+#     for d in ['data/Petmages/Cat', 'data/PetImages/Dog/']:
+#         for f in os.listdir(d):
+#             img = keras.preprocessing.image.load_img(
+#                 f, target_size=(180,180)
+#             )
+#             img_array = keras.preprocessing.image.img_to_array(img)
+#             data[i] = img_array
+#             if 'Dog' in d:
+#                 labels[i] = 1
+#             i += 1
+
+
+

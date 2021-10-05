@@ -1,5 +1,5 @@
 import argparse
-from model_builders import lenet5_emnist_builder, lenet5_cifar10_builder, lenet5_cifar10_with_augmentation_builder, lenet5_cifar10_same_init_builder, resnet50_cifar10, densenet121_cifar10, densenet121_dropout_cifar10_aug, resnet_v2_20_cifar10, resnet20_v1_cifar10, resnet56_v1_cifar, resnet121_v1_cifar
+from model_builders import *
 from utils import *
 from custom_callbacks import *
 import deep_tempering as dt
@@ -10,6 +10,7 @@ import time
 
 
 import os
+import sys
 import random
 import wandb
 
@@ -238,15 +239,36 @@ def lr_schedule_resnet(epoch):
     print('Learning rate: ', lr)
     return lr
 
+def lr_schedule_resnet_2(epoch):
+    """Learning Rate Schedule
+
+    Learning rate is scheduled to be reduced after 80, 120, 160, 180 epochs.
+    Called automatically every epoch as part of callbacks during training.
+
+    # Arguments
+        epoch (int): The number of epochs
+
+    # Returns
+        lr (float32): learning rate
+    """
+    lr = 0.01
+    if epoch > 56:
+        lr = 0.001
+
+    print('Learning rate: ', lr)
+    return lr
+
 def lr_schedule_lenet(epoch):
-    if epoch > 150:
-        return 0.0001
+    if epoch > 56:
+        return 0.01
     else:
-        return 0.001
+        return 0.1
 
 
 def main():
     args = init_args()
+
+    print(sys.path)
 
     random.seed(args.random_seed)
     np.random.seed(args.random_seed)
@@ -254,6 +276,7 @@ def main():
     os.environ['PYTHONHASHSEED'] = str(args.random_seed)
 
     model_builders = {"lenet5_cifar10_builder": lenet5_cifar10_builder, 'lenet5_emnist_builder': lenet5_emnist_builder,
+                      'lenet5_emnist_builder_2': lenet5_emnist_builder_2,
                       "lenet5_cifar10_with_augmentation_builder": lenet5_cifar10_with_augmentation_builder,
                       'lenet5_cifar10_same_init_builder': lenet5_cifar10_same_init_builder, 'resnet50_cifar10_builder': resnet50_cifar10,
                       'densenet121_cifar10_builder': densenet121_cifar10, 'densenet121_dropout_cifar10_builder': densenet121_dropout_cifar10_aug,
@@ -261,24 +284,22 @@ def main():
                       'resnet20_v1_cifar10_builder': resnet20_v1_cifar10,
                       'resnet56_v1_cifar10_builder': resnet56_v1_cifar,
                       'resnet121_v1_cifar10_builder': resnet121_v1_cifar,
+                      'xception_cifar10_builder': xception_cifar10,
+                      'fc_cifar10_builder': fc_cifar10,
+                      'simple_cnn_cifar10_builder': simple_cnn_cifar10
                       }
 
-    if args.model_name.startswith('resnet'):
-        hp = {1: {'learning_rate': [1e-3 for _ in range(args.n_replicas)],
+    if args.model_name.startswith('resnet') or args.model_name.startswith('xception'):
+        hp = {1: {'learning_rate': [0.01 for _ in range(args.n_replicas)],
                   'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
               args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
 
                       'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
 
             }
-        lr_schedule = lr_schedule_resnet
+        lr_schedule = lr_schedule_resnet_2
 
-    # if args.model_name.startswith('resnet'):
-    #     hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
-    #           120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
-    #          160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
-    #           180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
-    #     lr_schedule = lr_schedule_resnet
+
     else:
         hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
                             'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
@@ -305,13 +326,13 @@ def main():
 
     if args.use_ensemble_model:
         model = dt.EnsembleModel(model_builders[args.model_builder])
-        model.compile(optimizer=SGD(),
+        model.compile(optimizer=SGD(momentum=0.9),
                       loss='categorical_crossentropy',
                       metrics=['accuracy'],
                       n_replicas=args.n_replicas)
     else:
         model = model_builders[args.model_builder]()
-        model.compile(optimizer=SGD(lr=lr_schedule(0)),
+        model.compile(optimizer=SGD(lr=lr_schedule(0), momentum=0.9),
                       loss='categorical_crossentropy',
                       metrics=['accuracy'],
                       )
@@ -325,8 +346,9 @@ def main():
     start = time.time()
 
     if args.use_ensemble_model:
-        history = model.fit(x_train,
-                            y_train,
+        print(hp)
+        history = model.fit(x_val,
+                            y_val,
                             validation_data=(x_test, y_test),
                             hyper_params=hp,
                             batch_size=args.batch_size,
@@ -341,8 +363,8 @@ def main():
         log_additional_losses(addt_losses, args, args.do_swap)
     else:
         lr_sc = LearningRateScheduler(lr_schedule)
-        history = model.fit(x_train,
-                            y_train,
+        history = model.fit(x_val,
+                            y_val,
                             validation_data=(x_test, y_test),
                             batch_size=args.batch_size,
                             epochs=args.epochs,
@@ -351,8 +373,18 @@ def main():
                             callbacks=[lr_sc]
                             )
 
+    if args.use_ensemble_model:
+        gamma, beta = model._train_attrs[0]['model'].get_layer('batch_normalization_1').non_trainable_weights
+    else:
+        gamma, beta = model.get_layer('batch_normalization_1').non_trainable_weights
 
 
+    # print('##############################33')
+    # sess = tf.compat.v1.keras.backend.get_session()
+    # print(gamma)
+    # # print(beta)
+    # print(sess.run(gamma))
+    # print(sess.run(beta))
 
     end  = time.time() - start
 

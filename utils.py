@@ -17,6 +17,7 @@ from copy import deepcopy
 def prepare_data(args):
     if args.dataset_name == 'cifar10':
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+        print(x_test.shape)
 
     elif args.dataset_name == 'emnist':
         x_train, y_train, x_test, y_test = get_emnist_letters()
@@ -27,6 +28,7 @@ def prepare_data(args):
                          mode='constant', constant_values=0)
         y_train = np.int32(y_train) - 1
         y_test = np.int32(y_test) - 1
+
 
     x_train = x_train.astype('float32') / 255
     x_test = x_test.astype('float32') / 255
@@ -51,11 +53,9 @@ def prepare_data(args):
     # x_train = (x_train - m) / std
     # x_test = (x_test - m[:len(x_test)]) / std[:len(x_test)]
 
+    y_train = np_utils.to_categorical(y_train, num_classes=np.max(y_train)+1)
 
-
-    y_train = np_utils.to_categorical(y_train, 10)
-
-    y_test = np_utils.to_categorical(y_test, 10)
+    y_test = np_utils.to_categorical(y_test, num_classes=np.max(y_test)+1)
 
     x_train, y_train = shuffle_dataset(x_train, y_train, random_state=42)
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)

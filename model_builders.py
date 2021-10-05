@@ -7,6 +7,9 @@ from tensorflow.python.keras.backend import int_shape
 from tensorflow.python.keras.utils import get_file
 from tensorflow.keras.models import Model
 
+from deep_tempering.training_utils import get_training_phase_placeholder
+
+
 
 
 
@@ -79,20 +82,22 @@ class AugmentImages(tf.keras.layers.Layer):
     def build(self, input_shape):
         super(AugmentImages, self).build(input_shape)
 
-    def augment(self, x):
-        with tf.device('cpu:0'):
-            maybe_flipped = tf.image.random_flip_left_right(x)
-            padded = tf.pad(maybe_flipped, [[0, 0], [4, 4], [4, 4], [0, 0]])
-            cropped = tf.image.random_crop(padded, size=tf.shape(x))
-        return cropped
+    # def augment(self, x):
+    #     with tf.device('cpu:0'):
+    #         maybe_flipped = tf.image.random_flip_left_right(x)
+    #         padded = tf.pad(maybe_flipped, [[0, 0], [4, 4], [4, 4], [0, 0]])
+    #         cropped = tf.image.random_crop(padded, size=tf.shape(x))
+    #     return cropped
 
-    def call(self, x, **kwargs):
+    def call(self, x, training=None, **kwargs):
         shape = tf.shape(x)
-        if tf.keras.backend.learning_phase():
-            with tf.device('cpu:0'):
-                x = tf.image.random_flip_left_right(x)
-                x = tf.pad(x, [[0, 0], [4, 4], [4, 4], [0, 0]])
-                x = tf.image.random_crop(x, size=shape)
+        if not training:
+            return x
+        # if tf.keras.backend.learning_phase():
+        #     with tf.device('cpu:0'):
+        x = tf.image.random_flip_left_right(x)
+        x = tf.pad(x, [[0, 0], [4, 4], [4, 4], [0, 0]])
+        x = tf.image.random_crop(x, size=shape)
 
         return x
 
@@ -143,7 +148,35 @@ def lenet5_emnist_builder(hp):
     res = tf.keras.layers.Dense(units=84, activation='tanh')(res)
     res = CustomDropout(dropout_rate)(res)
 
-    res = RBFEuclidean(units=26)(res)
+    res = RBFEuclidean(units=26, activation=tf.keras.activations.softmax)(res)
+    model = tf.keras.models.Model(inputs, res)
+    return model
+
+def lenet5_emnist_builder_2(hp):
+
+    dropout_rate = hp.get_hparam('dropout_rate', default_value=0.)
+
+    inputs = tf.keras.layers.Input((32,32,1))
+
+    res = tf.keras.layers.Conv2D(filters=6, kernel_size=(5, 5), strides=(1,1), activation='relu',)(inputs)
+    res = tf.keras.layers.MaxPooling2D(pool_size=(2, 2,), strides=(2, 2,))(res)
+    # res = tf.keras.layers.Lambda(lambda x: tf.nn.dropout(x[0], x[1]))()
+    res = CustomDropout(dropout_rate)(res)
+
+
+    res = tf.keras.layers.Conv2D(filters=16, kernel_size=(5, 5), activation='relu')(res)
+    res = tf.keras.layers.MaxPooling2D(pool_size=(2, 2,), strides=(2, 2,))(res)
+
+    res = CustomDropout(dropout_rate)(res)
+
+    res = tf.keras.layers.Conv2D(filters=120, kernel_size=(5, 5), activation='relu')(res)
+    res = tf.keras.layers.Flatten()(res)
+
+    res = CustomDropout(dropout_rate)(res)
+    res = tf.keras.layers.Dense(units=84, activation='relu')(res)
+
+    res = CustomDropout(dropout_rate)(res)
+    res = tf.keras.layers.Dense(units=26, activation='softmax')(res) #ToDo: check whther softmax is present in research code or pass params to loss to work with logits
     model = tf.keras.models.Model(inputs, res)
     return model
 
@@ -428,7 +461,8 @@ def resnet_layer(inputs,
                  strides=1,
                  activation='relu',
                  batch_normalization=True,
-                 conv_first=True):
+                 conv_first=True,
+                 is_training=True):
     """2D Convolution-Batch Normalization-Activation stack builder
 
     # Arguments
@@ -455,12 +489,12 @@ def resnet_layer(inputs,
     if conv_first:
         x = conv(x)
         if batch_normalization:
-            x = BatchNormalization()(x)
+            x = BatchNormalization(axis=3, trainable=True)(x, training=is_training, )
         if activation is not None:
             x = Activation(activation)(x)
     else:
         if batch_normalization:
-            x = BatchNormalization()(x)
+            x = BatchNormalization(axis=3, trainable=True)(x, training=is_training, )
         if activation is not None:
             x = Activation(activation)(x)
         x = conv(x)
@@ -599,7 +633,11 @@ def resnet20_v1_cifar10(*args):
     hp = args[0] if len(args) > 0 else None
     if hp:
         dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
-
+        # is_training = get_training_phase_placeholder()
+        is_training = True
+    else:
+        is_training = tf.keras.backend.learning_phase()
+        # is_training = False
 
     n = 3
     depth = n * 6 + 2
@@ -612,8 +650,8 @@ def resnet20_v1_cifar10(*args):
     num_res_blocks = int((depth - 2) / 6)
 
     inputs = Input(shape=input_shape)
-    x = AugmentImages()(inputs)
-    x = resnet_layer(inputs=x)
+    x = AugmentImages()(inputs, training=is_training)
+    x = resnet_layer(inputs=x, is_training=is_training)
     # Instantiate the stack of residual units
     for stack in range(3):
         for res_block in range(num_res_blocks):
@@ -622,10 +660,12 @@ def resnet20_v1_cifar10(*args):
                 strides = 2  # downsample
             y = resnet_layer(inputs=x,
                              num_filters=num_filters,
-                             strides=strides)
+                             strides=strides,
+                             is_training=is_training)
             y = resnet_layer(inputs=y,
                              num_filters=num_filters,
-                             activation=None)
+                             activation=None,
+                             is_training=is_training)
             if stack > 0 and res_block == 0:  # first layer but not first stack
                 # linear projection residual shortcut connection to match
                 # changed dims
@@ -634,7 +674,8 @@ def resnet20_v1_cifar10(*args):
                                  kernel_size=1,
                                  strides=strides,
                                  activation=None,
-                                 batch_normalization=False)
+                                 batch_normalization=False,
+                                 is_training=is_training)
             x = tf.keras.layers.add([x, y])
             x = Activation('relu')(x)
         num_filters *= 2
@@ -816,6 +857,146 @@ def resnet121_v1_cifar(*args):
     # Instantiate model.
     model = Model(inputs=inputs, outputs=outputs)
     return model
+
+
+def xception_cifar10(*args):
+    input_shape = (32, 32, 3)
+    num_classes = 10
+
+    hp = args[0] if len(args) > 0 else None
+    if hp:
+        # print(' ##########################################################33')
+        # print(hp.get_hparam('learning_rate', default_value=0.00000000))
+        # print(' ##########################################################33')
+
+        dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+    else:
+        dropout_rate = 0
+
+    # data_augmentation = tf.keras.Sequential(
+    #     [tf.keras.layers.RandomFlip("horizontal"), tf.keras.layers.RandomRotation(0.1),]
+    # )
+
+    inputs = tf.keras.Input(shape=input_shape)
+    # Image augmentation block
+    x = AugmentImages()(inputs)
+
+    # Entry block
+    # x =tf.keras.layers.Rescaling(1.0 / 255)(x)
+    x =tf.keras.layers.Conv2D(32, 3, strides=2, padding="same")(x)
+    x =tf.keras.layers.BatchNormalization()(x)
+    x =tf.keras.layers.Activation("relu")(x)
+
+    x =tf.keras.layers.Conv2D(64, 3, padding="same")(x)
+    x =tf.keras.layers.BatchNormalization()(x)
+    x =tf.keras.layers.Activation("relu")(x)
+
+    previous_block_activation = x  # Set aside residual
+
+    for size in [128, 256, 512, 728]:
+        x =tf.keras.layers.Activation("relu")(x)
+        x =tf.keras.layers.SeparableConv2D(size, 3, padding="same")(x)
+        x =tf.keras.layers.BatchNormalization()(x)
+
+        x =tf.keras.layers.Activation("relu")(x)
+        x =tf.keras.layers.SeparableConv2D(size, 3, padding="same")(x)
+        x =tf.keras.layers.BatchNormalization()(x)
+
+        x =tf.keras.layers.MaxPooling2D(3, strides=2, padding="same")(x)
+
+        # Project residual
+        residual =tf.keras.layers.Conv2D(size, 1, strides=2, padding="same")(
+            previous_block_activation
+        )
+        x =tf.keras.layers.add([x, residual])  # Add back residual
+        previous_block_activation = x  # Set aside next residual
+
+    x =tf.keras.layers.SeparableConv2D(1024, 3, padding="same")(x)
+    x =tf.keras.layers.BatchNormalization()(x)
+    x =tf.keras.layers.Activation("relu")(x)
+
+    x =tf.keras.layers.GlobalAveragePooling2D()(x)
+    if num_classes == 2:
+        activation = "sigmoid"
+        units = 1
+    else:
+        activation = "softmax"
+        units = num_classes
+
+    # x = tf.keras.layers.Dropout(dropout_rate)(x)
+    outputs =tf.keras.layers.Dense(units, activation=activation)(x)
+    return Model(inputs, outputs)
+
+def fc_cifar10(*args):
+    input_shape = (32, 32, 3)
+    num_classes = 10
+
+    hp = args[0] if len(args) > 0 else None
+    if hp:
+        # print(' ##########################################################33')
+        # print(hp.get_hparam('learning_rate', default_value=0.00000000))
+        # print(' ##########################################################33')
+
+        dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+    else:
+        dropout_rate = 0
+
+    # data_augmentation = tf.keras.Sequential(
+    #     [tf.keras.layers.RandomFlip("horizontal"), tf.keras.layers.RandomRotation(0.1),]
+    # )
+
+    inputs = tf.keras.Input(shape=input_shape)
+    # Image augmentation block
+    x = AugmentImages()(inputs)
+    x = Flatten()(x)
+    x =tf.keras.layers.Dense(1024, activation='relu')(x)
+    x =tf.keras.layers.Dense(512, activation='relu')(x)
+    x =tf.keras.layers.Dense(256, activation='relu')(x)
+
+
+
+    outputs =tf.keras.layers.Dense(num_classes, activation='softmax')(x)
+    return Model(inputs, outputs)
+
+
+def simple_cnn_cifar10(*args):
+    input_shape = (32, 32, 3)
+    num_classes = 10
+
+    hp = args[0] if len(args) > 0 else None
+    if hp:
+        # print(' ##########################################################33')
+        # print(hp.get_hparam('learning_rate', default_value=0.00000000))
+        # print(' ##########################################################33')
+
+        dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
+        is_training = get_training_phase_placeholder()
+
+        # is_training = True
+    else:
+        dropout_rate = 0
+        is_training = True
+    inputs = tf.keras.Input(shape=input_shape)
+    x = AugmentImages()(inputs, is_training)
+    x = tf.keras.layers.Conv2D(32, (3, 3), activation='relu')(x)
+    x = tf.keras.layers.MaxPooling2D((2, 2))(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu')(x)
+    x = tf.keras.layers.MaxPooling2D((2, 2))(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu')(x)
+    x = tf.keras.layers.Flatten()(x)
+    outputs = tf.keras.layers.Dense(num_classes, activation='softmax')(x)
+    return Model(inputs, outputs)
+
+
+
+
+
+
+
+
+
+
+
 
 
 

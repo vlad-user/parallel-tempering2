@@ -8,6 +8,76 @@ import random
 from deep_tempering.callbacks import BaseExchangeCallback
 
 
+class WeightsSortCallback(BaseExchangeCallback):
+    def __init__(self, exchange_data, hp_to_swap, swap_step, burn_in, n_prev_eval_steps, n_replicas):
+        super(WeightsSortCallback, self).__init__(exchange_data, swap_step, burn_in)
+        self.n_prev_eval_steps = n_prev_eval_steps
+        self.hp_to_swap = hp_to_swap
+        self.num_rear = 0
+        self.step_counter = 0
+        self.replica_order = [i for i in range(n_replicas)]
+
+    def exchange(self):
+
+        n_replicas = self.model.n_replicas
+        hpname = self.hp_to_swap
+        hp = self.ordered_hyperparams
+        hyperparams = [h[1] for h in hp[hpname]]
+        replicas_ids = [h[0] for h in hp[hpname]]
+        exchange_logs = getattr(self, 'exchange_logs', None)
+        curr_losses = self.evaluate_exchange_losses()
+        not_sorted_curr_losses = np.array(curr_losses)
+        curr_losses = np.array(curr_losses)[replicas_ids]
+        past_losses = {}
+        losses_names = self.model.metrics_names[:n_replicas]
+
+        if self.num_rear == 0 and exchange_logs and len(self.exchange_logs[f'loss_0']) == self.n_prev_eval_steps:
+            for i, replica_id in enumerate(replicas_ids):
+                past_losses[replica_id] = exchange_logs[losses_names[replica_id]] + [curr_losses[i]]
+                past_losses[replica_id] = np.mean(past_losses[replica_id][-self.n_prev_eval_steps:])
+            print()
+            print('REARRANGE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111')
+            print()
+            # self.sort_weights(past_losses, replicas_ids, hyperparams)
+            losses_and_replicas_ids = [(l, r) for r, l in past_losses.items()]
+            losses_and_replicas_ids.sort(key=lambda x: x[0])
+            hyperparams = sorted(hyperparams)
+
+            _ = [self.model.hpspace.set_hyperparams(h, hpname, r) for h, (l, r) in zip(hyperparams, losses_and_replicas_ids)]
+            self.step_counter = 0
+            self.num_rear += 1
+            self.replica_order = [r for (l,r) in losses_and_replicas_ids]
+
+        super().log_exchange_metrics(not_sorted_curr_losses)
+
+
+    def sort_weights(self, losses, replicas_ids, temperatures):
+        n_replicas = self.model.n_replicas
+
+        losses, temperatures, replicas_ids = zip(*sorted(zip(
+           losses, temperatures, replicas_ids)))
+
+        sess = tf.compat.v1.keras.backend.get_session()
+
+        rid_to = 0
+        rid_from = replicas_ids[rid_to]
+        model_from = self.model.models[rid_from]
+        model_to = self.model.models[rid_to]
+
+        weights_from = sess.run(model_from.trainable_variables)
+
+        for i in range(n_replicas):
+
+            weights_to = sess.run(model_to.trainable_variables)
+            for v_dst, v_src in zip(model_to.trainable_variables, weights_from):
+               v_dst.load(v_src, session=sess)
+
+            weights_from = weights_to
+
+            rid_to = replicas_ids.index(rid_to)
+            model_to = self.model.models[rid_to]
+
+
 class LogExchangeLossesCallback(BaseExchangeCallback):
     def __init__(self, exchange_data, hp_to_swap, swap_step, burn_in, n_prev_eval_steps, do_swap, weights_rear_clbk, **kwargs):
         super(LogExchangeLossesCallback, self).__init__(exchange_data, swap_step, burn_in)
@@ -49,69 +119,6 @@ class LogExchangeLossesCallback(BaseExchangeCallback):
 
         else:
             super().log_exchange_metrics(losses, replica_order=self.weights_sort_clbk.replica_order)
-
-
-class MetropolisExchangeOneHPCallback(BaseExchangeCallback):
-    """Exchanges of hyperparameters based on Metropolis acceptance criteria."""
-    def __init__(self, exchange_data, hp_to_swap, swap_step=1, burn_in=1, coeff=1.):
-        super(MetropolisExchangeOneHPCallback, self).__init__(exchange_data, swap_step, burn_in)
-        self.coeff = coeff
-        self.hpname = hp_to_swap
-
-    def exchange(self, **kwargs):
-        """Exchanges hyperparameters between adjacent replicas.
-
-        This function is called once on the beginning of training to
-        log initial values of hyperparameters and then it is called
-        every `swap_step` steps.
-        """
-        # pick random hyperparameter to exchange
-        hp = self.ordered_hyperparams
-        hpname = self.hpname
-        # pick random replica pair to exchange
-        n_replicas = self.model.n_replicas
-        exchange_pair = kwargs.get('exchange_pair', np.random.randint(1, n_replicas))
-
-        losses = self.evaluate_exchange_losses()
-
-        hyperparams = [h[1] for h in hp[hpname]]
-        replicas_ids = [h[0] for h in hp[hpname]]
-
-        i = exchange_pair
-        j = exchange_pair - 1
-
-        # compute betas
-        if 'dropout' in hpname:
-            beta_i = (1. - hyperparams[i]) / hyperparams[i]
-            beta_j = (1. - hyperparams[j]) / hyperparams[j]
-        else:
-            # learning rate
-            beta_i = 1. / hyperparams[i]
-            beta_j = 1. / hyperparams[j]
-
-        # beta_i - beta_j is expected to be negative
-        delta = self.coeff * (losses[i] - losses[j]) * (beta_i - beta_j)
-        proba = min(np.exp(delta), 1.)
-
-        if np.random.uniform() < proba:
-            swaped = 1
-            self.model.hpspace.swap_between(replicas_ids[i], replicas_ids[j], hpname)
-        else:
-            swaped = 0
-
-        if getattr(self, 'exchange_logs', None):
-            accpt_ratio = (self.exchange_logs['swaped'].count(1) + swaped) / \
-                          (len(self.exchange_logs['proba']) + 1)
-        else:
-            accpt_ratio = swaped
-
-        super().log_exchange_metrics(losses,
-                                     proba=proba,
-                                     hpname=hpname,
-                                     swaped=swaped,
-                                     accept_ratio=accpt_ratio,
-                                     delta=delta,
-                                     exchange_pair=[replicas_ids[i], replicas_ids[j]])
 
 
 class MetropolisExchangeOneHPCallbackLogAllProbas(BaseExchangeCallback):
@@ -213,6 +220,7 @@ class MetropolisExchangeOneHPCallbackLogAllProbas(BaseExchangeCallback):
                                      num_misordered_temp=self.calc_misordered_temp(losses)
                                      )
 
+
 class MetropolisExchangeMultipleHPCallbackLogAllProbas(BaseExchangeCallback):
     """Exchanges of hyperparameters based on Metropolis acceptance criteria."""
     def __init__(self, exchange_data, swap_step=1, burn_in=1, coeff=1., n_prev_eval_steps=10, weights_sort_clbk=None):
@@ -312,6 +320,7 @@ class MetropolisExchangeMultipleHPCallbackLogAllProbas(BaseExchangeCallback):
                                      exchange_pair=[replicas_ids[i], replicas_ids[j]],
                                      num_misordered_temp=self.calc_misordered_temp(losses)
                                      )
+
 
 class PBTExchangeTruncationSelectionCallback(BaseExchangeCallback):
     """Exchanges of parameters based on PBT scheduling.
@@ -441,9 +450,6 @@ class PBTExchangeTruncationSelectionCallback(BaseExchangeCallback):
 
     def exchange(self, *args, **kwargs):
         self.exploit_and_explore(*args, **kwargs)
-
-
-
 
 
 class MetropolisExchangeTempAdjustmentCallbackLogAllProbas(BaseExchangeCallback):
@@ -707,152 +713,8 @@ class MetropolisExchangeTempAdjustmentCallbackLogAllProbas(BaseExchangeCallback)
                 else:
                     self.exchange_logs[f'beta_{k}'].append(v)
 
-class TempSortCallback(BaseExchangeCallback):
-    def __init__(self, exchange_data, hp_to_swap, swap_step, burn_in, n_replicas, n_prev_eval_steps):
-        super(TempSortCallback, self).__init__(exchange_data, swap_step, burn_in)
-        self.temp_order = np.arange(0, n_replicas)
-        self.n_prev_eval_steps = n_prev_eval_steps
-        self.hp_to_swap = hp_to_swap
-        self.num_rear = 0
 
-    def exchange(self):
-        exchange_logs = getattr(self, 'exchange_logs', None)
-        losses = self.evaluate_exchange_losses()
-
-        if self.num_rear == 0 and exchange_logs: #or (self.model.global_step > 100000 and self.model.global_step < 107000):
-            print()
-            print('REARRANGE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111')
-            print()
-            self.num_rear += 1
-            self.temp_order = self.sort_temperatures_curr_losses(losses)
-
-        super().log_exchange_metrics(losses)
-
-
-    def sort_temperatures_curr_losses(self, losses):
-        n_replicas = self.model.n_replicas
-        hpname = self.hp_to_swap
-        hp = self.ordered_hyperparams
-        replicas_ids = [h[0] for h in hp[hpname]]
-
-        curr_losses = np.array(losses)[replicas_ids]
-        hp_values = [h[1] for h in hp[hpname]]
-        losses_history_by_temp = {hp_value: curr_losses[i] for i, hp_value in enumerate(hp_values)}
-        losses_history_by_temp_sorted = sorted(
-            [[i, losses_history_by_temp[hp_value]] for i, hp_value in enumerate(hp_values)], key=lambda x: x[1])
-        new_temp_order = [t[0] for t in losses_history_by_temp_sorted]
-        return new_temp_order
-
-
-
-    def sort_temperatures(self):
-        n_replicas = self.model.n_replicas
-        hp_name = self.hp_to_swap
-        hp = self.ordered_hyperparams
-        losses_history = [self.exchange_logs[f'loss_{i}'][-self.n_prev_eval_steps:] for i in
-                          range(n_replicas)]
-        hp_values = [h[1] for h in hp[hp_name]]
-        losses_history_by_temp = {hp_value: [] for hp_value in
-                                  hp_values}
-
-        for r in range(n_replicas):
-            for step, hp_value in enumerate(self.exchange_logs[r][hp_name][-self.n_prev_eval_steps:]):
-                try:
-                    losses_history_by_temp[hp_value].append(losses_history[r][step])
-                except KeyError:
-                    print('param value 0.1')
-                    continue
-
-        losses_history_by_temp = {k: np.mean(v) for k, v in
-                                  losses_history_by_temp.items()}
-
-        losses_history_by_temp_sorted = sorted(
-            [[i, losses_history_by_temp[hp_value]] for i, hp_value in enumerate(hp_values)], key=lambda x: x[1])
-        new_temp_order = [t[0] for t in losses_history_by_temp_sorted]
-        return new_temp_order
-
-    def sort_temperatures_on_batch_loss(self):
-        steps_to_look_back = self.per_batch_losses_callback.steps_to_look_back
-        losses_history = [self.per_batch_losses_callback.exchange_logs[f'loss_{i}'][-steps_to_look_back:] for i in
-                          range(self.model.n_replicas)]
-        losses_history_by_temp = [[t, np.mean(losses_history[r[0]])] for t, r in enumerate(self.ordered_hyperparams[self.hpname])]
-        new_temp_order = [t[0] for t in sorted(losses_history_by_temp, key=lambda x: x[1])]
-        return new_temp_order
-
-
-class WeightsSortCallback(BaseExchangeCallback):
-    def __init__(self, exchange_data, hp_to_swap, swap_step, burn_in, n_prev_eval_steps, n_replicas):
-        super(WeightsSortCallback, self).__init__(exchange_data, swap_step, burn_in)
-        self.n_prev_eval_steps = n_prev_eval_steps
-        self.hp_to_swap = hp_to_swap
-        self.num_rear = 0
-        self.step_counter = 0
-        self.replica_order = [i for i in range(n_replicas)]
-
-    def exchange(self):
-
-        n_replicas = self.model.n_replicas
-        hpname = self.hp_to_swap
-        hp = self.ordered_hyperparams
-        hyperparams = [h[1] for h in hp[hpname]]
-        replicas_ids = [h[0] for h in hp[hpname]]
-        exchange_logs = getattr(self, 'exchange_logs', None)
-        curr_losses = self.evaluate_exchange_losses()
-        not_sorted_curr_losses = np.array(curr_losses)
-        curr_losses = np.array(curr_losses)[replicas_ids]
-        past_losses = {}
-        losses_names = self.model.metrics_names[:n_replicas]
-
-        if self.num_rear == 0 and exchange_logs and len(self.exchange_logs[f'loss_0']) == self.n_prev_eval_steps:
-            for i, replica_id in enumerate(replicas_ids):
-                past_losses[replica_id] = exchange_logs[losses_names[replica_id]] + [curr_losses[i]]
-                past_losses[replica_id] = np.mean(past_losses[replica_id][-self.n_prev_eval_steps:])
-            print()
-            print('REARRANGE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111')
-            print()
-            # self.sort_weights(past_losses, replicas_ids, hyperparams)
-            losses_and_replicas_ids = [(l, r) for r, l in past_losses.items()]
-            losses_and_replicas_ids.sort(key=lambda x: x[0])
-            hyperparams = sorted(hyperparams)
-
-            _ = [self.model.hpspace.set_hyperparams(h, hpname, r) for h, (l, r) in zip(hyperparams, losses_and_replicas_ids)]
-            self.step_counter = 0
-            self.num_rear += 1
-            self.replica_order = [r for (l,r) in losses_and_replicas_ids]
-
-        super().log_exchange_metrics(not_sorted_curr_losses)
-
-
-    def sort_weights(self, losses, replicas_ids, temperatures):
-        n_replicas = self.model.n_replicas
-
-        losses, temperatures, replicas_ids = zip(*sorted(zip(
-           losses, temperatures, replicas_ids)))
-
-        sess = tf.compat.v1.keras.backend.get_session()
-
-        rid_to = 0
-        rid_from = replicas_ids[rid_to]
-        model_from = self.model.models[rid_from]
-        model_to = self.model.models[rid_to]
-
-        weights_from = sess.run(model_from.trainable_variables)
-
-        for i in range(n_replicas):
-
-            weights_to = sess.run(model_to.trainable_variables)
-            for v_dst, v_src in zip(model_to.trainable_variables, weights_from):
-               v_dst.load(v_src, session=sess)
-
-            weights_from = weights_to
-
-            rid_to = replicas_ids.index(rid_to)
-            model_to = self.model.models[rid_to]
-
-
-
-
-
+##################################NOT USED
 class MetropolisExchangeTempSortCallbackLogAllProbas(BaseExchangeCallback):
     def __init__(self, temp_sort_clbk, exchange_data, hp_to_swap, swap_step, burn_in, coeff):
         super(MetropolisExchangeTempSortCallbackLogAllProbas, self).__init__(exchange_data, swap_step, burn_in)
@@ -1044,6 +906,141 @@ class ReplicaRearrangerCallback(BaseExchangeCallback):
         variables = [v + perturbation_fn(v.shape, replica_id) for v in variables]
         for v_dst, v_src in zip(model_to.trainable_variables, variables):
             v_dst.load(v_src, session=sess)
+
+
+class MetropolisExchangeOneHPCallback(BaseExchangeCallback):
+    """Exchanges of hyperparameters based on Metropolis acceptance criteria."""
+    def __init__(self, exchange_data, hp_to_swap, swap_step=1, burn_in=1, coeff=1.):
+        super(MetropolisExchangeOneHPCallback, self).__init__(exchange_data, swap_step, burn_in)
+        self.coeff = coeff
+        self.hpname = hp_to_swap
+
+    def exchange(self, **kwargs):
+        """Exchanges hyperparameters between adjacent replicas.
+
+        This function is called once on the beginning of training to
+        log initial values of hyperparameters and then it is called
+        every `swap_step` steps.
+        """
+        # pick random hyperparameter to exchange
+        hp = self.ordered_hyperparams
+        hpname = self.hpname
+        # pick random replica pair to exchange
+        n_replicas = self.model.n_replicas
+        exchange_pair = kwargs.get('exchange_pair', np.random.randint(1, n_replicas))
+
+        losses = self.evaluate_exchange_losses()
+
+        hyperparams = [h[1] for h in hp[hpname]]
+        replicas_ids = [h[0] for h in hp[hpname]]
+
+        i = exchange_pair
+        j = exchange_pair - 1
+
+        # compute betas
+        if 'dropout' in hpname:
+            beta_i = (1. - hyperparams[i]) / hyperparams[i]
+            beta_j = (1. - hyperparams[j]) / hyperparams[j]
+        else:
+            # learning rate
+            beta_i = 1. / hyperparams[i]
+            beta_j = 1. / hyperparams[j]
+
+        # beta_i - beta_j is expected to be negative
+        delta = self.coeff * (losses[i] - losses[j]) * (beta_i - beta_j)
+        proba = min(np.exp(delta), 1.)
+
+        if np.random.uniform() < proba:
+            swaped = 1
+            self.model.hpspace.swap_between(replicas_ids[i], replicas_ids[j], hpname)
+        else:
+            swaped = 0
+
+        if getattr(self, 'exchange_logs', None):
+            accpt_ratio = (self.exchange_logs['swaped'].count(1) + swaped) / \
+                          (len(self.exchange_logs['proba']) + 1)
+        else:
+            accpt_ratio = swaped
+
+        super().log_exchange_metrics(losses,
+                                     proba=proba,
+                                     hpname=hpname,
+                                     swaped=swaped,
+                                     accept_ratio=accpt_ratio,
+                                     delta=delta,
+                                     exchange_pair=[replicas_ids[i], replicas_ids[j]])
+
+class TempSortCallback(BaseExchangeCallback):
+    def __init__(self, exchange_data, hp_to_swap, swap_step, burn_in, n_replicas, n_prev_eval_steps):
+        super(TempSortCallback, self).__init__(exchange_data, swap_step, burn_in)
+        self.temp_order = np.arange(0, n_replicas)
+        self.n_prev_eval_steps = n_prev_eval_steps
+        self.hp_to_swap = hp_to_swap
+        self.num_rear = 0
+
+    def exchange(self):
+        exchange_logs = getattr(self, 'exchange_logs', None)
+        losses = self.evaluate_exchange_losses()
+
+        if self.num_rear == 0 and exchange_logs: #or (self.model.global_step > 100000 and self.model.global_step < 107000):
+            print()
+            print('REARRANGE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111')
+            print()
+            self.num_rear += 1
+            self.temp_order = self.sort_temperatures_curr_losses(losses)
+
+        super().log_exchange_metrics(losses)
+
+
+    def sort_temperatures_curr_losses(self, losses):
+        n_replicas = self.model.n_replicas
+        hpname = self.hp_to_swap
+        hp = self.ordered_hyperparams
+        replicas_ids = [h[0] for h in hp[hpname]]
+
+        curr_losses = np.array(losses)[replicas_ids]
+        hp_values = [h[1] for h in hp[hpname]]
+        losses_history_by_temp = {hp_value: curr_losses[i] for i, hp_value in enumerate(hp_values)}
+        losses_history_by_temp_sorted = sorted(
+            [[i, losses_history_by_temp[hp_value]] for i, hp_value in enumerate(hp_values)], key=lambda x: x[1])
+        new_temp_order = [t[0] for t in losses_history_by_temp_sorted]
+        return new_temp_order
+
+
+
+    def sort_temperatures(self):
+        n_replicas = self.model.n_replicas
+        hp_name = self.hp_to_swap
+        hp = self.ordered_hyperparams
+        losses_history = [self.exchange_logs[f'loss_{i}'][-self.n_prev_eval_steps:] for i in
+                          range(n_replicas)]
+        hp_values = [h[1] for h in hp[hp_name]]
+        losses_history_by_temp = {hp_value: [] for hp_value in
+                                  hp_values}
+
+        for r in range(n_replicas):
+            for step, hp_value in enumerate(self.exchange_logs[r][hp_name][-self.n_prev_eval_steps:]):
+                try:
+                    losses_history_by_temp[hp_value].append(losses_history[r][step])
+                except KeyError:
+                    print('param value 0.1')
+                    continue
+
+        losses_history_by_temp = {k: np.mean(v) for k, v in
+                                  losses_history_by_temp.items()}
+
+        losses_history_by_temp_sorted = sorted(
+            [[i, losses_history_by_temp[hp_value]] for i, hp_value in enumerate(hp_values)], key=lambda x: x[1])
+        new_temp_order = [t[0] for t in losses_history_by_temp_sorted]
+        return new_temp_order
+
+    def sort_temperatures_on_batch_loss(self):
+        steps_to_look_back = self.per_batch_losses_callback.steps_to_look_back
+        losses_history = [self.per_batch_losses_callback.exchange_logs[f'loss_{i}'][-steps_to_look_back:] for i in
+                          range(self.model.n_replicas)]
+        losses_history_by_temp = [[t, np.mean(losses_history[r[0]])] for t, r in enumerate(self.ordered_hyperparams[self.hpname])]
+        new_temp_order = [t[0] for t in sorted(losses_history_by_temp, key=lambda x: x[1])]
+        return new_temp_order
 
 
 
