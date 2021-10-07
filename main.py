@@ -347,8 +347,8 @@ def main():
 
     if args.use_ensemble_model:
         print(hp)
-        history = model.fit(x_val,
-                            y_val,
+        history = model.fit(x_train,
+                            y_train,
                             validation_data=(x_test, y_test),
                             hyper_params=hp,
                             batch_size=args.batch_size,
@@ -363,8 +363,8 @@ def main():
         log_additional_losses(addt_losses, args, args.do_swap)
     else:
         lr_sc = LearningRateScheduler(lr_schedule)
-        history = model.fit(x_val,
-                            y_val,
+        history = model.fit(x_train,
+                            y_train,
                             validation_data=(x_test, y_test),
                             batch_size=args.batch_size,
                             epochs=args.epochs,
