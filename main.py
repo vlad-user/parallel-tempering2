@@ -251,7 +251,7 @@ def lr_schedule_resnet_2(epoch):
     # Returns
         lr (float32): learning rate
     """
-    lr = 0.01
+    lr = 0.1
     if epoch > 56:
         lr = 0.001
 
@@ -267,8 +267,6 @@ def lr_schedule_lenet(epoch):
 
 def main():
     args = init_args()
-
-    print(sys.path)
 
     random.seed(args.random_seed)
     np.random.seed(args.random_seed)
@@ -289,8 +287,15 @@ def main():
                       'simple_cnn_cifar10_builder': simple_cnn_cifar10
                       }
 
+    # if args.model_name.startswith('resnet'):
+    #     hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
+    #           120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
+    #          160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
+    #           180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
+    #     lr_schedule = lr_schedule_resnet
+
     if args.model_name.startswith('resnet') or args.model_name.startswith('xception'):
-        hp = {1: {'learning_rate': [0.01 for _ in range(args.n_replicas)],
+        hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
                   'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
               args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
 
@@ -379,14 +384,14 @@ def main():
         gamma, beta = model.get_layer('batch_normalization_1').non_trainable_weights
 
 
-    # print('##############################33')
-    # sess = tf.compat.v1.keras.backend.get_session()
-    # print(gamma)
-    # # print(beta)
-    # print(sess.run(gamma))
-    # print(sess.run(beta))
+    print('###################################')
+    sess = tf.compat.v1.keras.backend.get_session()
+    print(gamma)
+    # print(beta)
+    print(sess.run(gamma))
+    print(sess.run(beta))
 
-    end  = time.time() - start
+    end = time.time() - start
 
 
     history = history.history

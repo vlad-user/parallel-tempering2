@@ -489,7 +489,7 @@ def resnet_layer(inputs,
     if conv_first:
         x = conv(x)
         if batch_normalization:
-            x = BatchNormalization(axis=3, trainable=True)(x, training=is_training, )
+            x = BatchNormalization(axis=3, trainable=True)(x, training=is_training, ) # add regularization to batch?
         if activation is not None:
             x = Activation(activation)(x)
     else:
@@ -633,8 +633,8 @@ def resnet20_v1_cifar10(*args):
     hp = args[0] if len(args) > 0 else None
     if hp:
         dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
-        # is_training = get_training_phase_placeholder()
-        is_training = True
+        is_training = get_training_phase_placeholder()
+        # is_training = True
     else:
         is_training = tf.keras.backend.learning_phase()
         # is_training = False
