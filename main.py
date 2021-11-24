@@ -287,22 +287,22 @@ def main():
                       'simple_cnn_cifar10_builder': simple_cnn_cifar10
                       }
 
-    # if args.model_name.startswith('resnet'):
-    #     hp = {1:{'learning_rate': [1e-3 for _ in range(args.n_replicas)]}, 80*390:{'learning_rate': [1e-4 for _ in range(args.n_replicas)]},
-    #           120*390:{'learning_rate': [1e-5 for _ in range(args.n_replicas)]},
-    #          160*390: {'learning_rate': [1e-6 for _ in range(args.n_replicas)]},
-    #           180*390: {'learning_rate': [1e-3*0.5e-3 for _ in range(args.n_replicas)]}}
-    #     lr_schedule = lr_schedule_resnet
+    if args.model_name.startswith('resnet'):
+        hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)]},
+              32000:{'learning_rate': [0.01 for _ in range(args.n_replicas)]},
+              48000:{'learning_rate': [0.001 for _ in range(args.n_replicas)]},
+             }
+        lr_schedule = lr_schedule_resnet
 
-    if args.model_name.startswith('resnet') or args.model_name.startswith('xception'):
-        hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
-                  'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
-              args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
-
-                      'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
-
-            }
-        lr_schedule = lr_schedule_resnet_2
+    # if args.model_name.startswith('resnet') or args.model_name.startswith('xception'):
+    #     hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
+    #               'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
+    #           args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
+    #
+    #                   'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
+    #
+    #         }
+    #     lr_schedule = lr_schedule_resnet_2
 
 
     else:
@@ -379,17 +379,26 @@ def main():
                             )
 
     if args.use_ensemble_model:
-        gamma, beta = model._train_attrs[0]['model'].get_layer('batch_normalization_1').non_trainable_weights
+        gamma, beta = model._train_attrs[0]['model'].get_layer('batch_normalization_1').trainable_weights
+        mov_avg, mov_var = model._train_attrs[0]['model'].get_layer('batch_normalization_1').non_trainable_weights
     else:
-        gamma, beta = model.get_layer('batch_normalization_1').non_trainable_weights
+        gamma, beta = model.get_layer('batch_normalization_1').trainable_weights
+        mov_avg, mov_var = model.get_layer('batch_normalization_1').non_trainable_weights
 
 
     print('###################################')
     sess = tf.compat.v1.keras.backend.get_session()
-    print(gamma)
-    # print(beta)
+
+    print('Gamma, beta: ')
     print(sess.run(gamma))
     print(sess.run(beta))
+
+    print('Mov mean, mov var:')
+    print(sess.run(mov_avg))
+    print(sess.run(mov_var))
+
+
+
 
     end = time.time() - start
 
