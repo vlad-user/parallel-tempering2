@@ -378,28 +378,6 @@ def main():
                             callbacks=[lr_sc]
                             )
 
-    if args.use_ensemble_model:
-        gamma, beta = model._train_attrs[0]['model'].get_layer('batch_normalization_1').trainable_weights
-        mov_avg, mov_var = model._train_attrs[0]['model'].get_layer('batch_normalization_1').non_trainable_weights
-    else:
-        gamma, beta = model.get_layer('batch_normalization_1').trainable_weights
-        mov_avg, mov_var = model.get_layer('batch_normalization_1').non_trainable_weights
-
-
-    print('###################################')
-    sess = tf.compat.v1.keras.backend.get_session()
-
-    print('Gamma, beta: ')
-    print(sess.run(gamma))
-    print(sess.run(beta))
-
-    print('Mov mean, mov var:')
-    print(sess.run(mov_avg))
-    print(sess.run(mov_var))
-
-
-
-
     end = time.time() - start
 
 
