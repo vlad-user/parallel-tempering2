@@ -227,15 +227,12 @@ def lr_schedule_resnet(epoch):
     # Returns
         lr (float32): learning rate
     """
-    lr = 1e-3
-    if epoch > 180:
-        lr *= 0.5e-3
-    elif epoch > 160:
-        lr *= 1e-3
-    elif epoch > 120:
-        lr *= 1e-2
-    elif epoch > 80:
-        lr *= 1e-1
+    lr = 0.1
+    if epoch > 137:
+        lr = 0.01
+    elif epoch > 91:
+        lr = 0.001
+
     print('Learning rate: ', lr)
     return lr
 
@@ -287,22 +284,22 @@ def main():
                       'simple_cnn_cifar10_builder': simple_cnn_cifar10
                       }
 
-    # if args.model_name.startswith('resnet'):
-    #     hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)]},
-    #           32000:{'learning_rate': [0.01 for _ in range(args.n_replicas)]},
-    #           48000:{'learning_rate': [0.001 for _ in range(args.n_replicas)]},
-    #          }
-    #     lr_schedule = lr_schedule_resnet
+    if args.model_name.startswith('resnet'):
+        hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)]},
+              32000:{'learning_rate': [0.01 for _ in range(args.n_replicas)]},
+              48000:{'learning_rate': [0.001 for _ in range(args.n_replicas)]},
+             }
+        lr_schedule = lr_schedule_resnet
 
-    if args.model_name.startswith('resnet') or args.model_name.startswith('xception'):
-        hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
-                  'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
-              args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
-
-                      'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
-
-            }
-        lr_schedule = lr_schedule_resnet_2
+    # if args.model_name.startswith('resnet') or args.model_name.startswith('xception'):
+    #     hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
+    #               'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
+    #           args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
+    #
+    #                   'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
+    #
+    #         }
+    #     lr_schedule = lr_schedule_resnet_2
 
 
     else:
