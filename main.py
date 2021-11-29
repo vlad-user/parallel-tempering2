@@ -229,9 +229,9 @@ def lr_schedule_resnet(epoch):
     """
     lr = 0.1
     if epoch > 137:
-        lr = 0.01
-    elif epoch > 91:
         lr = 0.001
+    elif epoch > 91:
+        lr = 0.01
 
     print('Learning rate: ', lr)
     return lr

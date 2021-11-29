@@ -2,8 +2,8 @@
 rs=(42)
 
 python ../main.py --exp_name test_resnet_lr_original_hps_rs_42 --exchange_type no_swap --hp_to_swap learning_rate --epochs 200  --model_name resnet20 --model_builder resnet20_v1_cifar10_builder  --lr_min 0.1 --lr_max 0.1 --dropout_rate_min 0. --dropout_rate_max 0. --n_replicas 5 --batch_size 128 --train_data_size 45000  --random_seed 42 --notes  see_if_val_loss_increase_with_keras_model  --proba_coeff_C  2.5
-python ../main.py --exp_name test_resnet_lr_original_hps_rs_50 --exchange_type no_swap --hp_to_swap learning_rate --epochs 200  --model_name resnet20 --model_builder resnet20_v1_cifar10_builder  --lr_min 0.1 --lr_max 0.1 --dropout_rate_min 0. --dropout_rate_max 0. --n_replicas 5 --batch_size 128 --train_data_size 45000  --random_seed 50 --notes  see_if_val_loss_increase_with_keras_model  --proba_coeff_C  2.5
-python ../main.py --exp_name test_resnet_lr_original_hps_rs_60 --exchange_type no_swap --hp_to_swap learning_rate --epochs 200  --model_name resnet20 --model_builder resnet20_v1_cifar10_builder  --lr_min 0.1 --lr_max 0.1 --dropout_rate_min 0. --dropout_rate_max 0. --n_replicas 5 --batch_size 128 --train_data_size 45000  --random_seed 60 --notes  see_if_val_loss_increase_with_keras_model  --proba_coeff_C  2.5
+#python ../main.py --exp_name test_resnet_lr_original_hps_rs_50 --exchange_type no_swap --hp_to_swap learning_rate --epochs 200  --model_name resnet20 --model_builder resnet20_v1_cifar10_builder  --lr_min 0.1 --lr_max 0.1 --dropout_rate_min 0. --dropout_rate_max 0. --n_replicas 5 --batch_size 128 --train_data_size 45000  --random_seed 50 --notes  see_if_val_loss_increase_with_keras_model  --proba_coeff_C  2.5
+#python ../main.py --exp_name test_resnet_lr_original_hps_rs_60 --exchange_type no_swap --hp_to_swap learning_rate --epochs 200  --model_name resnet20 --model_builder resnet20_v1_cifar10_builder  --lr_min 0.1 --lr_max 0.1 --dropout_rate_min 0. --dropout_rate_max 0. --n_replicas 5 --batch_size 128 --train_data_size 45000  --random_seed 60 --notes  see_if_val_loss_increase_with_keras_model  --proba_coeff_C  2.5
 
 
 
