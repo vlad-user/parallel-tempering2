@@ -109,8 +109,9 @@ class CustomDropout(tf.keras.layers.Layer):
     def build(self, input_shape):
         super(CustomDropout, self).build(input_shape)
 
-    def call(self, x):
-        x = tf.nn.dropout(x, self.rate)
+    def call(self, x, training):
+        if training:
+            x = tf.nn.dropout(x, self.rate)
         return x
 
 
@@ -129,24 +130,26 @@ class MyInit(tf.keras.initializers.Initializer):
 
 
 def lenet5_emnist_builder(hp):
+
+    is_training = get_training_phase_placeholder()
     dropout_rate = hp.get_hparam('dropout_rate', default_value=0.0)
 
 
     inputs = tf.keras.layers.Input((32,32,1))
     res = tf.keras.layers.Conv2D(filters=6, kernel_size=(5, 5), activation='tanh',)(inputs)
     res = AvgPoolWithWeights(pool_size=(2, 2,), strides=(2, 2,), activation=tf.keras.activations.tanh)(res)
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
     res = tf.keras.layers.Conv2D(filters=16, kernel_size=(5, 5), activation='tanh')(res)
     res = AvgPoolWithWeights(pool_size=(2, 2,), strides=(2, 2), activation=tf.keras.activations.tanh)(res)
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
 
     res = tf.keras.layers.Conv2D(filters=120, kernel_size=(5, 5), activation='tanh')(res)
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
 
     res = tf.keras.layers.Flatten()(res)
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
     res = tf.keras.layers.Dense(units=84, activation='tanh')(res)
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
 
     res = RBFEuclidean(units=26, activation=tf.keras.activations.softmax)(res)
     model = tf.keras.models.Model(inputs, res)
@@ -182,6 +185,7 @@ def lenet5_emnist_builder_2(hp):
 
 
 def lenet5_cifar10_builder(hp):
+    is_training = get_training_phase_placeholder()
 
     dropout_rate = hp.get_hparam('dropout_rate', default_value=0.)
 
@@ -190,21 +194,21 @@ def lenet5_cifar10_builder(hp):
     res = tf.keras.layers.Conv2D(filters=6, kernel_size=(5, 5), strides=(1,1), activation='relu',)(inputs)
     res = tf.keras.layers.MaxPooling2D(pool_size=(2, 2,), strides=(2, 2,))(res)
     # res = tf.keras.layers.Lambda(lambda x: tf.nn.dropout(x[0], x[1]))()
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
 
 
     res = tf.keras.layers.Conv2D(filters=16, kernel_size=(5, 5), activation='relu')(res)
     res = tf.keras.layers.MaxPooling2D(pool_size=(2, 2,), strides=(2, 2,))(res)
 
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
 
     res = tf.keras.layers.Conv2D(filters=120, kernel_size=(5, 5), activation='relu')(res)
     res = tf.keras.layers.Flatten()(res)
 
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
     res = tf.keras.layers.Dense(units=84, activation='relu')(res)
 
-    res = CustomDropout(dropout_rate)(res)
+    res = CustomDropout(dropout_rate)(res, training=is_training)
     res = tf.keras.layers.Dense(units=10, activation='softmax')(res) #ToDo: check whther softmax is present in research code or pass params to loss to work with logits
     model = tf.keras.models.Model(inputs, res)
     return model
