@@ -294,11 +294,12 @@ def main():
     if args.model_name.startswith('resnet') or args.model_name.startswith('xception'):
         hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
                   'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
-              args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
+              # args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
+              args.burn_in_hp: {'learning_rate': np.concatenate((np.linspace(args.lr_min, 0.02, 8),
+                                                                  np.linspace(0.02, args.lr_max, 4)), axis=0),
+                                'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
 
-                      'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
-
-            }
+             }
         lr_schedule = lr_schedule_resnet_2
 
 
