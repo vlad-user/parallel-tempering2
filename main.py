@@ -296,7 +296,7 @@ def main():
                   'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
               # args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
               args.burn_in_hp: {'learning_rate': np.concatenate((np.linspace(args.lr_min, 0.002, 8),
-                                                                  np.linspace(0.003, args.lr_max, 4)), axis=0),
+                                                                  np.linspace(0.0025, args.lr_max, 2)), axis=0),
                                 'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
 
              }
