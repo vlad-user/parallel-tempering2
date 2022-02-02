@@ -294,9 +294,9 @@ def main():
     if args.model_name.startswith('resnet') or args.model_name.startswith('xception'):
         hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
                   'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
-              # args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
-              args.burn_in_hp: {'learning_rate': np.concatenate((np.linspace(args.lr_min, 0.002, 9),
-                                                                  np.linspace(0.003 , args.lr_max, 1)), axis=0),
+              args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
+              # args.burn_in_hp: {'learning_rate': np.concatenate((np.linspace(args.lr_min, 0.002, 9),
+              #                                                     np.linspace(0.003 , args.lr_max, 1)), axis=0),
                                 'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
 
              }
