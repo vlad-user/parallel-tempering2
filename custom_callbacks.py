@@ -637,7 +637,7 @@ class MetropolisExchangeTempAdjustmentCallbackLogAllProbas(BaseExchangeCallback)
         every `swap_step` steps.
         """ # pick random hyperparameter to exchange
         if self.model.global_step > 90000:
-            self.coeff = 4.
+            self.coeff = 2.
 
 
         hp = self.ordered_hyperparams
