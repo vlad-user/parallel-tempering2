@@ -1,6 +1,6 @@
 import argparse
 from model_builders import *
-from utils import *
+from loggers import *
 from custom_callbacks import *
 import deep_tempering as dt
 from tensorflow.keras.optimizers import Adam, SGD
@@ -8,9 +8,7 @@ from tensorflow.keras.callbacks import LearningRateScheduler
 
 import time
 
-
 import os
-import sys
 import random
 import wandb
 
@@ -19,6 +17,9 @@ def init_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp_name", type=str)
     parser.add_argument("--notes", type=str, default=' ')
+
+    parser.add_argument("--save_logs_to", type=str, default='./wandb')
+
 
 
     parser.add_argument("--model_name", type=str, default='lenet5')
@@ -270,11 +271,14 @@ def main():
     tf.set_random_seed(args.random_seed)
     os.environ['PYTHONHASHSEED'] = str(args.random_seed)
 
-    model_builders = {"lenet5_cifar10_builder": lenet5_cifar10_builder, 'lenet5_emnist_builder': lenet5_emnist_builder,
+    model_builders = {"lenet5_cifar10_builder": lenet5_cifar10_builder,
+                      'lenet5_emnist_builder': lenet5_emnist_builder,
                       'lenet5_emnist_builder_2': lenet5_emnist_builder_2,
                       "lenet5_cifar10_with_augmentation_builder": lenet5_cifar10_with_augmentation_builder,
-                      'lenet5_cifar10_same_init_builder': lenet5_cifar10_same_init_builder, 'resnet50_cifar10_builder': resnet50_cifar10,
-                      'densenet121_cifar10_builder': densenet121_cifar10, 'densenet121_dropout_cifar10_builder': densenet121_dropout_cifar10_aug,
+                      'lenet5_cifar10_same_init_builder': lenet5_cifar10_same_init_builder,
+                      'resnet50_cifar10_builder': resnet50_cifar10,
+                      'densenet121_cifar10_builder': densenet121_cifar10,
+                      'densenet121_dropout_cifar10_builder': densenet121_dropout_cifar10_aug,
                       'resnet20_v2_cifar10_builder': resnet_v2_20_cifar10,
                       'resnet20_v1_cifar10_builder': resnet20_v1_cifar10,
                       'resnet56_v1_cifar10_builder': resnet56_v1_cifar,
@@ -305,15 +309,18 @@ def main():
 
     else:
         hp = {1: {'learning_rate': [0.1 for _ in range(args.n_replicas)],
-                            'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
-                        args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
-
+                  'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas), },
+              args.burn_in_hp: {'learning_rate': np.linspace(args.lr_min, args.lr_max, args.n_replicas),
                                 'dropout_rate': np.linspace(args.dropout_rate_min, args.dropout_rate_max, args.n_replicas)},
               }
         lr_schedule = lr_schedule_lenet
 
+    if not os.path.exists(os.path.join(args.save_logs_to, args.exp_name)):
+        os.mkdir(os.path.join(args.save_logs_to, args.exp_name))
+
     wandb.init(
         project="deep-tempering",
+        dir=os.path.join(args.save_logs_to, args.exp_name),
         name=f"{args.exp_name}-{args.random_seed}",
         config=vars(args),
         notes=args.notes,

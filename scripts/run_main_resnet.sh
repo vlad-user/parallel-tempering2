@@ -18,7 +18,7 @@ rs=(42)
 #done
 for i in "${rs[@]}"
 do
-                python ../main.py --exp_name test_resnet_lr_swap_sort_adj --exchange_type swap_sort_adj --hp_to_swap learning_rate --epochs 600  --model_name resnet20 --model_builder resnet20_v1_cifar10_builder  --lr_min 0.0007 --lr_max 0.002 --dropout_rate_min 0. --dropout_rate_max 0. --n_replicas 8 --batch_size 128 --train_data_size 45000  --random_seed ${i} --notes longer_exp_C_equals_3_at_90k_steps    --proba_coeff_C  0.5 --swap_step 300 --use_ensemble_model
+                python ../main.py --exp_name test_resnet_lr_swap_sort_adj --exchange_type swap_sort_adj --hp_to_swap learning_rate --epochs 350  --model_name resnet20 --model_builder resnet20_v1_cifar10_builder  --lr_min 0.001 --lr_max 0.01 --dropout_rate_min 0. --dropout_rate_max 0. --n_replicas 8 --batch_size 128 --train_data_size 45000  --random_seed ${i} --notes look_for_exchange_in_losses   --proba_coeff_C  0.5 --swap_step 300 --use_ensemble_model
 done
 
 #        python ../main.py --exp_name test_resnet_lr_swap_sort --exchange_type swap_sort --hp_to_swap learning_rate --epochs 350  --model_name resnet20 --model_builder resnet20_v1_cifar10_builder  --lr_min 0.0007 --lr_max 0.007 --dropout_rate_min 0. --dropout_rate_max 0. --n_replicas 12 --batch_size 128 --train_data_size 45000  --random_seed ${i} --notes not_equidistant_temp    --proba_coeff_C  0.3 --use_ensemble_model

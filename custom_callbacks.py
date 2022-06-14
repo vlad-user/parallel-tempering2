@@ -1,9 +1,6 @@
 import numpy as np
-from scipy.ndimage.filters import gaussian_filter1d
-# import albumentations as A
 import tensorflow as tf
 import functools
-from utils import numpy_ewma_vectorized
 import random
 from deep_tempering.callbacks import BaseExchangeCallback
 
@@ -636,8 +633,8 @@ class MetropolisExchangeTempAdjustmentCallbackLogAllProbas(BaseExchangeCallback)
         log initial values of hyperparameters and then it is called
         every `swap_step` steps.
         """ # pick random hyperparameter to exchange
-        if self.model.global_step > 90000:
-            self.coeff = 3.
+        # if self.model.global_step > 90000:
+        #     self.coeff = 3.
 
 
         hp = self.ordered_hyperparams

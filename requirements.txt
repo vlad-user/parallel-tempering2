@@ -1,0 +1,11 @@
+numpy==1.19.5
+tensorboard==1.15.0
+tensorflow==1.15.0
+tensorflow-gpu==1.15.0
+tensorflow-estimator==1.15.1
+Keras==2.3.1
+Keras-Applications==1.0.8
+Keras-Preprocessing==1.1.0
+scikit-learn==0.24.2
+wandb==0.12.18
+deep-tempering @ git+https://github.com/vlad-user/deep-tempering.git
