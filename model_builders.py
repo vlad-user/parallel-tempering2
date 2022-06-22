@@ -4,13 +4,9 @@ from tensorflow.keras.layers import Dense, Conv2D, BatchNormalization, Activatio
 from tensorflow.keras.layers import AveragePooling2D, Input, Flatten
 from tensorflow.keras.applications import ResNet50, DenseNet121
 from tensorflow.python.keras.backend import int_shape
-from tensorflow.python.keras.utils import get_file
 from tensorflow.keras.models import Model
 
 from deep_tempering.training_utils import get_training_phase_placeholder
-
-
-
 
 
 class AvgPoolWithWeights(tf.keras.layers.Layer):

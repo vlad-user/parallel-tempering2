@@ -1,3 +1,6 @@
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
+
 import argparse
 from model_builders import *
 from loggers import *
@@ -268,7 +271,7 @@ def main():
 
     random.seed(args.random_seed)
     np.random.seed(args.random_seed)
-    tf.set_random_seed(args.random_seed)
+    tf.compat.v1.set_random_seed(args.random_seed)
     os.environ['PYTHONHASHSEED'] = str(args.random_seed)
 
     model_builders = {"lenet5_cifar10_builder": lenet5_cifar10_builder,
@@ -330,9 +333,9 @@ def main():
 
     assert x_train.shape[0] == args.train_data_size
 
-    config = tf.ConfigProto()
+    config = tf.compat.v1.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 1.
-    session = tf.Session(config=config, )
+    session = tf.compat.v1.Session(config=config)
 
     if args.use_ensemble_model:
         model = dt.EnsembleModel(model_builders[args.model_builder])
