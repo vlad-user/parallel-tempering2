@@ -270,10 +270,23 @@ def lr_schedule_lenet(epoch):
 def main():
     args = init_args()
 
-    random.seed(args.random_seed)
-    np.random.seed(args.random_seed)
-    tf.compat.v1.set_random_seed(args.random_seed)
-    os.environ['PYTHONHASHSEED'] = str(args.random_seed)
+    exp_path = os.path.join(args.save_logs_to, args.exp_name + '_' + ''.join(
+        random.choice(string.ascii_letters + string.digits) for i in range(8)))
+    if not os.path.exists(exp_path):
+        os.mkdir(exp_path)
+
+    wandb.init(
+        project="deep-tempering",
+        dir=exp_path,
+        name=f"{args.exp_name}-{args.random_seed}",
+        config=vars(args),
+        notes=args.notes,
+    )
+
+    # random.seed(args.random_seed)
+    # np.random.seed(args.random_seed)
+    # tf.compat.v1.set_random_seed(args.random_seed)
+    # os.environ['PYTHONHASHSEED'] = str(args.random_seed)
 
     model_builders = {"lenet5_cifar10_builder": lenet5_cifar10_builder,
                       'lenet5_emnist_builder': lenet5_emnist_builder,
@@ -319,17 +332,7 @@ def main():
               }
         lr_schedule = lr_schedule_lenet
 
-    exp_path = os.path.join(args.save_logs_to, args.exp_name + '_' + ''.join(random.choice(string.ascii_letters + string.digits) for i in range(8)))
-    if not os.path.exists(exp_path):
-        os.mkdir(exp_path)
 
-    wandb.init(
-        project="deep-tempering",
-        dir=exp_path,
-        name=f"{args.exp_name}-{args.random_seed}",
-        config=vars(args),
-        notes=args.notes,
-    )
 
     x_train, y_train, x_val, y_val, x_test, y_test = prepare_data(args)
 
