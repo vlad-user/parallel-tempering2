@@ -13,6 +13,7 @@ import time
 
 import os
 import random
+import string
 import wandb
 
 
@@ -318,12 +319,13 @@ def main():
               }
         lr_schedule = lr_schedule_lenet
 
-    if not os.path.exists(os.path.join(args.save_logs_to, args.exp_name)):
-        os.mkdir(os.path.join(args.save_logs_to, args.exp_name))
+    exp_path = os.path.join(args.save_logs_to, args.exp_name + '_' + ''.join(random.choice(string.ascii_letters + string.digits) for i in range(8)))
+    if not os.path.exists(exp_path):
+        os.mkdir(exp_path)
 
     wandb.init(
         project="deep-tempering",
-        dir=os.path.join(args.save_logs_to, args.exp_name),
+        dir=exp_path,
         name=f"{args.exp_name}-{args.random_seed}",
         config=vars(args),
         notes=args.notes,
