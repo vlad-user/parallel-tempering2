@@ -360,6 +360,7 @@ def main():
     model.summary()
 
     clbks = init_clbks(args, x_val, y_val)
+    clbks.append(dt.callbacks.MonitorOptimalModelCallback(path=exp_path))
 
     start = time.time()
 
